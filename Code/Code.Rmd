@@ -1,0 +1,131 @@
+Steps:
+Delete hybrids 
+Delete after "subsp" for #NA
+Trim
+
+```{r}
+library(tidyverse)
+lookup = read.csv ("Lookup_table.csv", header = T)
+colnames(lookup)[1] <- "scientificName"
+  
+data_ALA = read.csv ("Data/Eucalyptus_genus.csv", header = T) %>% 
+  select (basisOfRecord, decimalLatitude, decimalLongitude, geodeticDatum, scientificName)
+data_herbarium = read.csv ("Data/euc.csv", header = T) %>% 
+  select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
+  unite("scientificName", genus:specificEpithet, remove = T, sep = " ")
+
+data_merge = full_join(x = data_herbarium, y = data_ALA) %>% 
+  filter (basisOfRecord == "PRESERVED_SPECIMEN") %>%
+  filter (!str_detect(scientificName, ' x ')) %>% 
+  filter (!is.na(decimalLatitude))
+data_merge$scientificName <- sub("subsp.*", "", data_merge$scientificName)
+data_merge$scientificNameTrim = trimws (data_merge$scientificName, which = c("both"))
+data_merge = data_merge %>% 
+  select (-scientificName) %>% 
+  rename(scientificName = scientificNameTrim)
+data_merge = data_merge %>% left_join(by=c("scientificName"), lookup) 
+
+subg_summary <- data_merge %>% 
+  group_by (Subgenus) %>% 
+  summarise (speciesNumber = n_distinct(scientificName))
+```
+
+Extracting random list
+```{r}
+library(tidyverse)
+lookup = read.csv ("Lookup_table.csv", header = T)
+colnames(lookup)[1] <- "scientificName"
+
+##Eucalyptus
+data_herbarium_euc = read.csv ("Data/euc.csv", header = T) %>% 
+  select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
+  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ") %>% 
+  filter (!is.na(decimalLatitude))
+
+data_herbarium_euc$scientificNameTrim = trimws (data_herbarium_euc$scientificName, which = c("both"))
+data_herbarium_euc = data_herbarium_euc %>% 
+  select (-scientificName) %>% 
+  rename(scientificName = scientificNameTrim)
+data_herbarium_euc = data_herbarium_euc %>% left_join(by=c("scientificName"), lookup) 
+
+subg_summary_euc <- data_herbarium_euc %>% 
+  group_by (Subgenus) %>% 
+  summarise (speciesNumber = n_distinct(scientificName))
+data_herbarium_euc = data_herbarium_euc %>% 
+  left_join(by=c("Subgenus"), subg_summary_euc)
+
+
+
+#Main randomised list for smaller subg        
+euc_small_list_main <- data_herbarium_euc %>% 
+  filter (speciesNumber <= 10) %>% 
+  group_by (Subgenus, scientificName) %>% 
+  sample_n (id, size=1, replace = FALSE)
+
+#Backup randomised list for smaller subg up to 5 where possible
+euc_small_list_back <- data_herbarium_euc %>% 
+  filter (speciesNumber <= 10, !(id %in% euc_small_list_main))
+euc_small_list_back_Summ <- euc_small_list_back %>% 
+  group_by (scientificName) %>% 
+  summarise (Sheets = n_distinct(id))
+euc_small_list_back_small <- euc_small_list_back %>% 
+  left_join(by=c("scientificName"), euc_small_list_back_Summ) %>%  
+  filter (Sheets < 5) %>% 
+  group_by (scientificName) %>% 
+  mutate (rank = row_number())
+euc_small_list_back_big <- euc_small_list_back %>% 
+  left_join(by=c("scientificName"), euc_small_list_back_Summ) %>%  
+  filter (!Sheets < 5) %>% 
+  group_by (scientificName) %>% 
+  sample_n (id, size=5, replace = FALSE) %>% 
+  mutate (rank = row_number()) 
+
+euc_small_list_back <- bind_rows(euc_small_list_back_big, euc_small_list_back_small)
+
+
+#Main randomised list for larger subg        
+euc_big_list_main <- data_herbarium_euc %>% 
+  filter (speciesNumber > 10) %>% 
+  group_by (Subgenus) %>% 
+  sample_n (id, size=10, replace = FALSE) %>% 
+  mutate (rank = row_number()) 
+
+#Backup randomised list for larger subg up to 5 where possible
+euc_big_list_back <- data_herbarium_euc %>% 
+  filter (speciesNumber > 10, !(id %in% euc_big_list_main)) %>% 
+  group_by (Subgenus) %>% 
+  sample_n (id, size=5, replace = FALSE) %>% 
+  mutate (rank = row_number()) 
+
+
+
+##Angophora
+data_herbarium_ang = read.csv ("Data/ang.csv", header = T) %>% 
+  select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
+  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ")%>% 
+  filter (!is.na(decimalLatitude))
+
+ang_list_main <- data_herbarium_ang %>% 
+  sample_n (id, size=10, replace = FALSE)
+
+ang_list_back <- data_herbarium_ang %>% 
+  filter (!(id %in% ang_list_main)) %>% 
+  sample_n (id, size=5, replace = FALSE) %>% 
+  mutate (rank = row_number()) 
+
+##Corymbia
+data_herbarium_cor = read.csv ("Data/cor.csv", header = T) %>% 
+  select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
+  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ")%>% 
+  filter (!is.na(decimalLatitude))
+
+cor_list_main <- data_herbarium_cor %>% 
+  sample_n (id, size=10, replace = FALSE)
+
+cor_list_back <- data_herbarium_cor %>% 
+  filter (!(id %in% cor_list_main)) %>% 
+  sample_n (id, size=5, replace = FALSE) %>% 
+  mutate (rank = row_number()) 
+
+```
+
