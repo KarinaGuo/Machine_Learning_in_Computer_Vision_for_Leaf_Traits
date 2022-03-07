@@ -1,0 +1,36 @@
+"","id","decimalLatitude","decimalLongitude","scientificName","Subgenus","speciesNumber","rank"
+"1","NSW:NSW:NSW 380887",-18.55,140.02,"Eucalyptus polycarpa","Corymbia",15,1
+"2","NSW:NSW:NSW 939654",-33.71417,150.57444,"Eucalyptus gummifera","Corymbia",15,2
+"3","NSW:NSW:NSW 835464",-21.67,145.97,"Eucalyptus dolichocarpa","Corymbia",15,3
+"4","NSW:NSW:NSW 701965",-14.5161111,141.6080556,"Eucalyptus confertiflora","Corymbia",15,4
+"5","NSW:NSW:NSW 812451",-20.8814,140.8431,"Eucalyptus aparrerinja","Corymbia",15,5
+"6","NSW:NSW:NSW 972876",-33.5639,150.3561,"Eucalyptus stricta","Eucalyptus",180,1
+"7","NSW:NSW:NSW 50794",-37.83,147.62,"Eucalyptus yangoura","Eucalyptus",180,2
+"8","NSW:NSW:NSW 926823",-33.52139,15.37067,"Eucalyptus dendromorpha","Eucalyptus",180,3
+"9","NSW:NSW:NSW 500951",-35.8272222,148.9038889,"Eucalyptus niphophila","Eucalyptus",180,4
+"10","NSW:NSW:NSW 330703",-37.3,142.6,"Eucalyptus alpina","Eucalyptus",180,5
+"11","NSW:NSW:NSW 535661",-27.0108333,126.2583333,"Eucalyptus gamophylla","Eudesmia",29,1
+"12","NSW:NSW:NSW 920606",-15.6019,144.4519,"Eucalyptus megasepala","Eudesmia",29,2
+"13","NSW:NSW:NSW 341169",-30.43,115.62,"Eucalyptus eudesmioides -- gittinsii","Eudesmia",29,3
+"14","NSW:NSW:NSW 822946",-19.3836,142.9317,"Eucalyptus similis","Eudesmia",29,4
+"15","NSW:NSW:NSW 937711",-11.28367,142.317381,"Eucalyptus tetrodonta","Eudesmia",29,5
+"16","NSW:NSW:NSW 370136",-34.02,122.2,"Eucalyptus cornuta x incrassata","Hybrid",587,1
+"17","NSW:NSW:NSW 340765",-33.57,150.25,"Eucalyptus moorei x piperita subsp. pipertia","Hybrid",587,2
+"18","NSW:NSW:NSW 342062",-33.08,119.5,"Eucalyptus depauperata x grossa","Hybrid",587,3
+"19","NSW:NSW:NSW 362583",-33.3786111,143.5511111,"Eucalyptus dumosa x socialis","Hybrid",587,4
+"20","NSW:NSW:NSW 349168",-30.83,115.92,"Eucalyptus macrocarpa x pyriformis","Hybrid",587,5
+"21","NSW:NSW:NSW 340458",-42.53,147.47,"Eucalyptus tenuiramis","Monocalyptus",13,1
+"22","NSW:NSW:NSW 387856",-42.5,145.25,"Eucalyptus nitida","Monocalyptus",13,2
+"23","NSW:NSW:NSW 336025",-33.48,150.17,"Eucalyptus sieberi","Monocalyptus",13,3
+"24","NSW:NSW:NSW 57802",-31.83,151.43,"Eucalyptus obliqua","Monocalyptus",13,4
+"25","NSW:NSW:NSW 340652",-42.87,147.37,"Eucalyptus risdonii -- tenuiramis","Monocalyptus",13,5
+"26","NSW:NSW:NSW 942395",-33.58,120.05,"Eucalyptus erythrandra","Symphyomyrtus",796,1
+"27","NSW:NSW:NSW 926418",-32.4153,138.0025,"Eucalyptus odorata","Symphyomyrtus",796,2
+"28","NSW:NSW:NSW 319195",-42.67,146.62,"Eucalyptus vernicosa","Symphyomyrtus",796,3
+"29","NSW:NSW:NSW 496282",-32.6019444,147.6672222,"Eucalyptus dwyeri -- morrisii","Symphyomyrtus",796,4
+"30","NSW:NSW:NSW 318606",-28.4,151.7,"Eucalyptus infera","Symphyomyrtus",796,5
+"31","NSW:NSW:NSW 331595",-33.87,120.8,"Eucalyptus litonea","Unknown",66,1
+"32","NSW:NSW:NSW 327188",-41.7,146.13,"Eucalyptus simulans","Unknown",66,2
+"33","NSW:NSW:NSW 831398",-37.2033,144.2383,"Eucalyptus referta","Unknown",66,3
+"34","NSW:NSW:NSW 351888",-30.15,120.47,"Eucalyptus pulveriramula","Unknown",66,4
+"35","NSW:NSW:NSW 329405",-25.95,152.92,"Eucalyptus dreparophylla","Unknown",66,5
