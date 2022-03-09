@@ -8,7 +8,7 @@ library(tidyverse)
 lookup = read.csv ("Lookup_table.csv", header = T)
 colnames(lookup)[1] <- "scientificName"
   
-data_ALA = read.csv ("Data/Eucalyptus_genus.csv", header = T) %>% 
+data_ALA = read.csv ("Data/Eucalyptus_genus_ALA_CUT.csv", header = T) %>% 
   select (basisOfRecord, decimalLatitude, decimalLongitude, geodeticDatum, scientificName)
 data_herbarium = read.csv ("Data/euc.csv", header = T) %>% 
   select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
@@ -154,3 +154,14 @@ write.csv(cor_list_back, file = "cor_list_back.csv")
 
 ```
 
+Cutting ALA Data
+```{r}
+data_ALA = read.csv ("Data/Eucalyptus_genus_ALA.csv", header = T) %>% 
+  select (basisOfRecord, decimalLatitude, decimalLongitude, geodeticDatum, scientificName)
+
+data_ALA <- data_ALA %>% 
+  filter (basisOfRecord == "PRESERVED_SPECIMEN")
+
+write.csv (data_ALA, "Data/Eucalyptus_genus_ALA_CUT.csv")
+  
+```
