@@ -60,7 +60,7 @@ data_herbarium_euc = data_herbarium_euc %>%
 euc_small_list_main <- data_herbarium_euc %>% 
   filter (speciesNumber <= 10) %>% 
   group_by (Subgenus, scientificName) %>% 
-  sample_n (id, size=1, replace = FALSE)
+  slice_sample (n=1, replace = FALSE)
 
 write.csv(euc_small_list_main, file = "euc_small_list_main.csv")
 
@@ -79,7 +79,7 @@ euc_small_list_back_big <- euc_small_list_back %>%
   left_join(by=c("scientificName"), euc_small_list_back_Summ) %>%  
   filter (!Sheets < 5) %>% 
   group_by (scientificName) %>% 
-  sample_n (id, size=5, replace = FALSE) %>% 
+  slice_sample (n=5, replace = FALSE) %>% 
   mutate (rank = row_number()) 
 
 euc_small_list_back <- bind_rows(euc_small_list_back_big, euc_small_list_back_small)
@@ -91,10 +91,10 @@ write.csv(euc_small_list_back, file = "euc_small_list_back.csv")
 euc_big_list_main_sp <- data_herbarium_euc %>% 
   filter (speciesNumber > 10) %>% 
   group_by (scientificName) %>% 
-  sample_n (id, size=1, replace = FALSE)
+  slice_sample (n=1, replace = FALSE)
 euc_big_list_main <- euc_big_list_main_sp %>% 
   group_by (Subgenus) %>% 
-  sample_n (id, size=10, replace = FALSE) %>% 
+  slice_sample (n=10, replace = FALSE) %>% 
   mutate (rank = row_number()) 
 
 write.csv(euc_big_list_main, file = "euc_big_list_main.csv")
@@ -103,7 +103,7 @@ write.csv(euc_big_list_main, file = "euc_big_list_main.csv")
 euc_big_list_back <- euc_big_list_main_sp %>% 
   filter (speciesNumber > 10, !(id %in% euc_big_list_main)) %>% 
   group_by (Subgenus) %>% 
-  sample_n (id, size=5, replace = FALSE) %>% 
+  slice_sample (n=5, replace = FALSE) %>% 
   mutate (rank = row_number()) 
 
 write.csv(euc_big_list_back, file = "euc_big_list_back.csv")
@@ -111,21 +111,21 @@ write.csv(euc_big_list_back, file = "euc_big_list_back.csv")
 ##Angophora
 data_herbarium_ang = read.csv ("Data/ang.csv", header = T) %>% 
   select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
-  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ")%>% 
+  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ") %>% 
   filter (!is.na(decimalLatitude))
 
 ang_list_main_sp <- data_herbarium_ang %>% 
   group_by (scientificName) %>% 
-  sample_n (id, size=1, replace = FALSE) %>% 
+  slice_sample (n=1, replace = FALSE) %>% 
   ungroup ()
 ang_list_main <- ang_list_main_sp %>% 
-  sample_n (id, size=10, replace = FALSE)
+  slice_sample (n=10, replace = FALSE)
 
 write.csv(ang_list_main, file = "ang_list_main.csv")
 
 ang_list_back <- data_herbarium_ang %>% 
   filter (!(id %in% ang_list_main)) %>% 
-  sample_n (id, size=5, replace = FALSE) %>% 
+  slice_sample (n=5, replace = FALSE) %>% 
   mutate (rank = row_number())
 
 write.csv(ang_list_back, file = "ang_list_back.csv")
@@ -133,21 +133,21 @@ write.csv(ang_list_back, file = "ang_list_back.csv")
 ##Corymbia
 data_herbarium_cor = read.csv ("Data/cor.csv", header = T) %>% 
   select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
-  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ")%>% 
+  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ") %>% 
   filter (!is.na(decimalLatitude))
 
 cor_list_main_sp <- data_herbarium_cor %>% 
   group_by (scientificName) %>% 
-  sample_n (id, size=1, replace = FALSE) %>% 
+  slice_sample (n=1, replace = FALSE) %>% 
   ungroup ()
 cor_list_main <- cor_list_main_sp %>% 
-  sample_n (id, size=10, replace = FALSE)
+  slice_sample (n=10, replace = FALSE)
 
 write.csv(cor_list_main, file = "cor_list_main.csv")
 
 cor_list_back <- data_herbarium_cor %>% 
   filter (!(id %in% cor_list_main)) %>% 
-  sample_n (id, size=5, replace = FALSE) %>% 
+  slice_sample (n=5, replace = FALSE) %>% 
   mutate (rank = row_number())
 
 write.csv(cor_list_back, file = "cor_list_back.csv")
