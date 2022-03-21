@@ -1,0 +1,71 @@
+"","id","decimalLatitude","decimalLongitude","scientificName","Subgenus","speciesNumber","rank"
+"1","NSW:NSW:NSW 395096",-37.7833333,148.5966667,"Eucalyptus tumescens","Corymbia",15,1
+"2","NSW:NSW:NSW 349256",-34.15,135.73,"Eucalyptus peninsularis","Corymbia",15,2
+"3","NSW:NSW:NSW 370105",-18.63,145.17,"Eucalyptus citriodora","Corymbia",15,3
+"4","NSW:NSW:NSW 451947",-14.37,130.8,"Eucalyptus ferruginea","Corymbia",15,4
+"5","NSW:NSW:NSW 451928",-14.37,130.8,"Eucalyptus latifolia","Corymbia",15,5
+"6","NSW:NSW:NSW 923668",-20.9333,135.2008,"Eucalyptus sphaerica","Corymbia",15,6
+"7","NSW:NSW:NSW 939654",-33.71417,150.57444,"Eucalyptus gummifera","Corymbia",15,7
+"8","NSW:NSW:NSW 835464",-21.67,145.97,"Eucalyptus dolichocarpa","Corymbia",15,8
+"9","NSW:NSW:NSW 541803",-20.7561111,116.8491667,"Eucalyptus hamersleyana","Corymbia",15,9
+"10","NSW:NSW:NSW 812451",-20.8814,140.8431,"Eucalyptus aparrerinja","Corymbia",15,10
+"11","NSW:NSW:NSW 339847",-27.47,153.02,"Eucalyptus signata","Eucalyptus",180,1
+"12","NSW:NSW:NSW 331800",-23.83,149.08,"Eucalyptus mediocris","Eucalyptus",180,2
+"13","NSW:NSW:NSW 325741",-35.1,150.27,"Eucalyptus obstans -- stricta","Eucalyptus",180,3
+"14","NSW:NSW:NSW 340821",-31.67,151.47,"Eucalyptus serpentinicola","Eucalyptus",180,4
+"15","NSW:NSW:NSW 353964",-34.32,118.62,"Eucalyptus preissiana","Eucalyptus",180,5
+"16","NSW:NSW:NSW 972876",-33.5639,150.3561,"Eucalyptus stricta","Eucalyptus",180,6
+"17","NSW:NSW:NSW 833083",-37.0192,144.0997,"Eucalyptus aurifodina","Eucalyptus",180,7
+"18","NSW:NSW:NSW 541946",-36.35,149.62,"Eucalyptus paliformis","Eucalyptus",180,8
+"19","NSW:NSW:NSW 474728",-33.5975,150.8702778,"Eucalyptus eugenoides -- globoidea","Eucalyptus",180,9
+"20","NSW:NSW:NSW 683520",-17.13,145.8,"Eucalyptus phaeotricha","Eucalyptus",180,10
+"21","NSW:NSW:NSW 937711",-11.28367,142.317381,"Eucalyptus tetrodonta","Eudesmia",29,1
+"22","NSW:NSW:NSW 341198",-29.57,115.45,"Eucalyptus conveniens","Eudesmia",29,2
+"23","NSW:NSW:NSW 341359",-28.2,123.8,"Eucalyptus gongylocarpa","Eudesmia",29,3
+"24","NSW:NSW:NSW 341175",-26.58,113.83,"Eucalyptus selachiana","Eudesmia",29,4
+"25","NSW:NSW:NSW 346050",-29.35,115.22,"Eucalyptus gittinsii -- tetragona","Eudesmia",29,5
+"26","NSW:NSW:NSW 920606",-15.6019,144.4519,"Eucalyptus megasepala","Eudesmia",29,6
+"27","NSW:NSW:NSW 341327",-26.58,114.53,"Eucalyptus jucunda","Eudesmia",29,7
+"28","NSW:NSW:NSW 340834",-29.05,114.85,"Eucalyptus erythrocorys","Eudesmia",29,8
+"29","NSW:NSW:NSW 350253",-28.17,115.13,"Eucalyptus sp. Kalbarri (M.I.H.Brooker 7937)","Eudesmia",29,9
+"30","NSW:NSW:NSW 316060",-13.02,132.13,"Eucalyptus gigantangion","Eudesmia",29,10
+"31","NSW:NSW:NSW 312480",-37,148.68,"Eucalyptus glaucescens x viminalis","Hybrid",587,1
+"32","NSW:NSW:NSW 351257",-31.42,119.15,"Eucalyptus celastroides subsp. virella x yilgarnensis subsp.","Hybrid",587,2
+"33","NSW:NSW:NSW 993046",-34.30081,149.97847,"Eucalyptus blaxlandii x eugenioides","Hybrid",587,3
+"34","NSW:NSW:NSW 325737",-34.9,150.17,"Eucalyptus obstans x stricta","Hybrid",587,4
+"35","NSW:NSW:NSW 812243",-30.2,151.67,"Eucalyptus stellulata x stringybark","Hybrid",587,5
+"36","NSW:NSW:NSW 333148",-34.57,142.67,"Eucalyptus intertexta x largiflorens","Hybrid",587,6
+"37","NSW:NSW:NSW 358712",-42.82,147.33,"Eucalyptus pauciflora x risdonii","Hybrid",587,7
+"38","NSW:NSW:NSW 65673",-34.9,150.28,"Eucalyptus spectatrix x stricta","Hybrid",587,8
+"39","NSW:NSW:NSW 326712",-35.67,149.83,"Eucalyptus radiata subsp. radiata x sieberi","Hybrid",587,9
+"40","NSW:NSW:NSW 325255",-33.72,150.37,"Eucalyptus ligustrina x rupicola","Hybrid",587,10
+"41","NSW:NSW:NSW 57802",-31.83,151.43,"Eucalyptus obliqua","Monocalyptus",13,1
+"42","NSW:NSW:NSW 387856",-42.5,145.25,"Eucalyptus nitida","Monocalyptus",13,2
+"43","NSW:NSW:NSW 454053",-42.87,147.4,"Eucalyptus risdonii","Monocalyptus",13,3
+"44","NSW:NSW:NSW 340458",-42.53,147.47,"Eucalyptus tenuiramis","Monocalyptus",13,4
+"45","NSW:NSW:NSW 340652",-42.87,147.37,"Eucalyptus risdonii -- tenuiramis","Monocalyptus",13,5
+"46","NSW:NSW:NSW 337324",-42.07,146.17,"Eucalyptus amygdalina -- nitida","Monocalyptus",13,6
+"47","NSW:NSW:NSW 334905",-41.65,145.95,"Eucalyptus coccifera -- nitida","Monocalyptus",13,7
+"48","NSW:NSW:NSW 378620",-42.22,148.33,"Eucalyptus amygdalina","Monocalyptus",13,8
+"49","NSW:NSW:NSW 336025",-33.48,150.17,"Eucalyptus sieberi","Monocalyptus",13,9
+"50","NSW:NSW:NSW 323032",-37.6,145.63,"Eucalyptus regnans","Monocalyptus",13,10
+"51","NSW:NSW:NSW 704850",-36.3105556,149.5338889,"Eucalyptus parvula","Symphyomyrtus",796,1
+"52","NSW:NSW:NSW 343831",-32.52,121.58,"Eucalyptus subtilis","Symphyomyrtus",796,2
+"53","NSW:NSW:NSW 332572",-34.6,118,"Eucalyptus grossifolia","Symphyomyrtus",796,3
+"54","NSW:NSW:NSW 349508",-33.68,120.08,"Eucalyptus indurata","Symphyomyrtus",796,4
+"55","NSW:NSW:NSW 857811",-36.02631,148.4739,"Eucalyptus forresterae","Symphyomyrtus",796,5
+"56","NSW:NSW:NSW 942392",-30.77,117.15,"Eucalyptus ceratocorys","Symphyomyrtus",796,6
+"57","NSW:NSW:NSW 822975",-21.682667,140.663922,"Eucalyptus leucophylla","Symphyomyrtus",796,7
+"58","NSW:NSW:NSW 388175",-32.5,121.63,"Eucalyptus diptera","Symphyomyrtus",796,8
+"59","NSW:NSW:NSW 331374",-29.15,151.57,"Eucalyptus caleyi","Symphyomyrtus",796,9
+"60","NSW:NSW:NSW 830283",-38.45,144.1,"Eucalyptus litoralis","Symphyomyrtus",796,10
+"61","NSW:NSW:NSW 319269",-41.63,146.65,"Eucalyptus columnaris","Unknown",66,1
+"62","NSW:NSW:NSW 341919",-34.82,118.7,"Eucalyptus disparifolia","Unknown",66,2
+"63","NSW:NSW:NSW 341669",-34.35,118.4,"Eucalyptus plana","Unknown",66,3
+"64","NSW:NSW:NSW 223620",-24.33,150.75,"Eucalyptus kroombitensis","Unknown",66,4
+"65","NSW:NSW:NSW 42354",-27.25,130.75,"Eucalyptus boomsmana","Unknown",66,5
+"66","NSW:NSW:NSW 331595",-33.87,120.8,"Eucalyptus litonea","Unknown",66,6
+"67","NSW:NSW:NSW 328185",-32.85,151.15,"Eucalyptus","Unknown",66,7
+"68","NSW:NSW:NSW 333272",-34.72,135.87,"Eucalyptus zephyrea","Unknown",66,8
+"69","NSW:NSW:NSW 428104",-33.7188889,117.8480556,"Eucalyptus petroleuca","Unknown",66,9
+"70","NSW:NSW:NSW 331650",-35.33,150.2,"Eucalyptus botrysaligna","Unknown",66,10
