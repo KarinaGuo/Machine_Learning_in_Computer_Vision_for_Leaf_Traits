@@ -1,4 +1,3 @@
-library(galah)
 library(raster)
 library(tidyverse)
 
@@ -7,6 +6,7 @@ data_raw <- read.csv ("Data/Leaf_angles_51_raw.csv") %>%
   group_by (Species) %>% 
   summarise (mean_measurement = mean(measurement)) 
 colnames(data_raw) = c("scientificName", "mean_Measurement")
+## Just realised that the below file already has the mean so the above code is unnecessary
 
 data <- read.csv ("Data/Leaf_angles_51.csv") %>% 
   dplyr::select (Species.name, Type) 
