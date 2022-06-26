@@ -1,6 +1,16 @@
-machine_to_accuracy <- function(validation_meta_dir, model_summary_dir, model_matches_dir) {
+###
+#validation_meta_dir = "~/Uni/Honours/Thesis/Data Analysis or Code/Data/Labelling List/Validation_list.csv"
+#model_summary_dir = "~/Uni/Honours/Thesis/Data Analysis or Code/Data/model_summary.csv"
+#model_matches_dir = "~/Uni/Honours/Thesis/Data Analysis or Code/Data/model_matches.csv"
+#test = "Two"
+
+#machine_to_accuracy(test, validation_meta_dir, model_summary_dir, model_matches_dir)
+
+machine_to_accuracy <- function(test, validation_meta_dir, model_summary_dir, model_matches_dir) {
   library (tidyverse)
   library(ggpubr)
+  
+  dir.create(path = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test)))
   
   validation_meta <- read.csv(validation_meta_dir) %>% 
     select (id, Leaf100, Leaf100B, Leaf90, Leaf50, Leaf50UM, decimalLongitude, decimalLatitude) %>% 
@@ -22,6 +32,7 @@ machine_to_accuracy <- function(validation_meta_dir, model_summary_dir, model_ma
   model_matches_1[model_matches_1 == "6"] <- "Leaf90UM"
   model_matches_1[model_matches_1 == "7"] <- "Leaf50UM"
   model_matches <- left_join(model_matches_1, model_matches_2, by="mask_iou")
+  .GlobalEnv$model_matches <- model_matches
   
   model_summary["pr_cat_id"][model_summary["pr_cat_id"] == "0"] <- "Leaf100"
   model_summary["pr_cat_id"][model_summary["pr_cat_id"] == "1"] <- "Leaf100B"
@@ -31,7 +42,6 @@ machine_to_accuracy <- function(validation_meta_dir, model_summary_dir, model_ma
   model_summary["pr_cat_id"][model_summary["pr_cat_id"] == "5"] <- "Leaf100BUM"
   model_summary["pr_cat_id"][model_summary["pr_cat_id"] == "6"] <- "Leaf90UM"
   model_summary["pr_cat_id"][model_summary["pr_cat_id"] == "7"] <- "Leaf50UM"
-  
   
   ###Plotting 
   #Counting all categories
@@ -95,12 +105,12 @@ machine_to_accuracy <- function(validation_meta_dir, model_summary_dir, model_ma
   
   
   pt <- function(accuracy_plots){
-    ggsave(plot=accuracy_plots, filename="Machine_accuracy_results/accuracy_plots_counts.jpeg", width = 2200, height = 2100, units="px") 
+    ggsave(plot=accuracy_plots, filename=(paste0("Machine_accuracy_results/Test ",paste0(test),"/accuracy_plots_counts.jpeg")), width = 2200, height = 2100, units="px") 
     print(accuracy_plots)
   }
   pt(accuracy_plots)
 
-### 
+  ### 
   model_summary_count <- model_summary_plot  
   colnames(model_summary_count)<-c("pr_cat_id", "prediction")
   validation_meta_count <- validation_meta_plot
@@ -118,14 +128,31 @@ machine_to_accuracy <- function(validation_meta_dir, model_summary_dir, model_ma
   #precision
   model_matches_precision <- model_matches %>% 
     filter(mask_iou>0.7) %>%
+    group_by(pr_cat_id) %>% 
     count(pr_cat_id)
-  .GlobalEnv$p = sum(model_matches_precision["n"])/sum(model_matches_plot["n"])
+  
+  colnames(model_matches_precision) <- c('pr_cat_id','model_matches_threshold')
+  
+  model_matches_all <- model_matches_plot
+  colnames(model_matches_all) <- c('pr_cat_id','model_matches_all')
+  
+  p_df_join <- left_join(model_matches_precision, model_matches_all, by='pr_cat_id')
+
+  p_all = sum(p_df_join["model_matches_threshold"])/sum(p_df_join["model_matches_all"])
+  .GlobalEnv$p_df <- p_df_join %>% 
+    group_by(pr_cat_id) %>% 
+    mutate(p = (model_matches_threshold/model_matches_all)) %>% 
+    mutate(p_all = p_all)
   
   #recall -
-  .GlobalEnv$r = sum(model_summary_count["prediction"]) / sum(validation_meta_count["groundtruth"])
+  r_all = sum(model_summary_count["prediction"]) / sum(validation_meta_count["groundtruth"])
+  .GlobalEnv$r_df_join <- merge(model_summary_count, validation_meta_count, by ='pr_cat_id') %>% 
+    group_by (pr_cat_id) %>% 
+    mutate (r = (sum(prediction) / sum(groundtruth))) %>% 
+    mutate (r_all = r_all)
   
   #harmonic mean of precision and recall,
-  .GlobalEnv$F1 = (2*(p*r))/p+r
+  .GlobalEnv$F1 = (2*(p_all*r_all))/p_all+r_all
   
   #Formatting
   difference_together <- difference %>% 
@@ -135,14 +162,16 @@ machine_to_accuracy <- function(validation_meta_dir, model_summary_dir, model_ma
   colnames(IoU_together) <- c("pr_cat_id", "IoU_cat_avg")
   
   .GlobalEnv$IoU_differences_join <- left_join(difference_together, IoU_together, by = "pr_cat_id")
-  numercal_accuracy_p_r_F1 <- data.frame(p,r,F1) %>% 
-    reshape2::melt()
-
+  #numercal_accuracy_p_r_F1 <- data.frame(p,r,F1) %>% 
+    #reshape2::melt()
+  
   #all together now!
-  csv <- function(IoU_differences_join, numercal_accuracy_p_r_F1){
-    write.csv(IoU_differences_join, file = paste0(getwd(), "/Machine_accuracy_results/IoU_differences_join.csv"))
-    write.csv(numercal_accuracy_p_r_F1, file = paste0(getwd(), "/Machine_accuracy_results/numercal_accuracy_p_r_F1.csv"))
+  csv <- function(IoU_differences_join, p_df, r_df_join, F1){
+    write.csv(IoU_differences_join, file = paste0(getwd(), "/Machine_accuracy_results/Test ", paste0(test),"/IoU_differences_join.csv"))
+    write.csv(p_df, file = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test),"/numercal_accuracy_p_df.csv"))
+    write.csv(r_df_join, file = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test),"/numercal_accuracy_r_df.csv"))
+    write.csv(F1, file = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test),"/numercal_accuracy_F1_df.csv"))
   }
   
-  csv(IoU_differences_join, numercal_accuracy_p_r_F1)
+  csv(IoU_differences_join, p_df, r_df_join, F1)
 }
