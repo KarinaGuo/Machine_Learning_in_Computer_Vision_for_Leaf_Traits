@@ -1,5 +1,3 @@
-###
-# CODE DOESNT MAP LABELS YET
 test_meta_dir = "C:/Users/swirl/OneDrive - UNSW/Honours/Thesis/Data Analysis or Code/Data/Labelling List/Validation_list.csv"
 model_summary_dir = "C:/Users/swirl/OneDrive - UNSW/Honours/Thesis/Data Analysis or Code/Data/model_summary.csv"
 model_matches_dir = "C:/Users/swirl/OneDrive - UNSW/Honours/Thesis/Data Analysis or Code/Data/model_matches.csv"
