@@ -1,7 +1,23 @@
-library (tidyverse)
+in_directory <- "C:/Users/swirl/OneDrive - UNSW/Honours/Thesis/Data Analysis or Code/Data/Test binary matrices/"
+curvature_results <- list()
 
-leaf <- as.matrix(read.csv("Uni/Honours/Thesis/Data Analysis or Code/Data/test_notcurved2.csv", header = T))
-leaf = leaf[,-1]
+convex_hull_calculations (in_directory)
+
+convex_hull_calculations <- function(in_directory){
+  library(reshape2)
+  library(sp)
+  library (tidyverse)
+  
+  calculating_hull <- function(leaf) {
+    leaf = leaf[,-1]
+    df.long <- melt(leaf)
+    df.subset <- df.long %>% 
+      filter(value==1)
+    df.hull <- df.subset[,-3]
+    df.hull$Var2 <- gsub("X", "", as.character(df.hull$Var2)) %>% 
+      as.numeric()
+    df.hull$Var1 <- as.numeric(df.hull$Var1)
+    df.hull <- as.matrix(df.hull)
 
 #plot <- image(leaf)
 #plot
@@ -9,19 +25,6 @@ leaf = leaf[,-1]
 #Finding hull area using https://chitchatr.wordpress.com/2015/01/23/calculating-the-area-of-a-convex-hull/
 # Var1 = row
 # Var2 = column
-library(reshape2)
-df.long <- melt(leaf)
-df.subset <- df.long %>% 
-  filter(value==1)
-
-##
-library(sp)
-df.hull <- df.subset[,-3]
-df.hull$Var2 <- gsub("X", "", as.character(df.hull$Var2)) %>% 
-  as.numeric()
-df.hull$Var1 <- as.numeric(df.hull$Var1)
-df.hull <- as.matrix(df.hull)
-
 box.hpts <- chull(x = df.hull[,1], y = df.hull[,2])
 box.hpts <- c(box.hpts, box.hpts[1])
 box.chull.coords <- df.hull[box.hpts,]
@@ -35,6 +38,17 @@ chull.area_hull <- chull.poly_hull@area
 chull.area_leaf <- nrow(df.subset)
 #
 curvature_ratio_not = chull.area_hull/chull.area_leaf
+  }
+
+  filenames <- list.files(in_directory, pattern="*.csv", full.names=TRUE)
+  leaf <- lapply(filenames, read.csv)
+  leaf <- lapply(leaf, as.matrix)
+  .GlobalEnv$curvature_results <- sapply(leaf, calculating_hull)
+  
+  }
+
+df_curvatureratio_results <- data.frame(curvature_results)
+write.csv(df_curvatureratio_results, "_curvatureratio_results.csv")
 
 ###plotting in base plot
 X <- as.matrix(df.hull)
@@ -78,4 +92,3 @@ gg <- ggplot(df.hull, aes(x = Var2, y = Var1)) +
   stat_chull(aes(color = "red"), geom = "line", alpha = 0.2)
 
 ggsave(plot=gg, filename="del.png", device = "png")
-
