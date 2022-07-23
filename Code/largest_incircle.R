@@ -14,6 +14,7 @@ in_circle_calculations <- function(in_directory) {
   library (geosphere)
 
 in_circle <- function(leaf) {
+  #leaf <- read.csv("~/Uni/Honours/Thesis/Data Analysis or Code/Data/test_notcurved2.csv")
   leaf = leaf[,-1]
 
 #plot <- image(leaf)
@@ -21,7 +22,7 @@ in_circle <- function(leaf) {
 
 # Var1 = row
 # Var2 = column
-df.long <- reshape2::melt(leaf)
+df.long <- reshape2::melt(as.matrix(leaf))
 df.subset <- df.long %>% 
   filter(value==1)
 
@@ -33,22 +34,6 @@ df.hull$Var1 <- as.numeric(df.hull$Var1)
 df.hull <- as.matrix(df.hull)
 
 polygons <- concaveman(df.hull)
-#x_avg = mean(polygons[, "V1"])
-#y_avg = mean(polygons[, "V2"])
-#centre = cbind(x_avg, y_avg)
-#points(centre, col="red")
-
-
-
-##Getting distances
-
-#dobj <- dist(polygons, method = "euclidean")
-#dmat <- as.matrix(dobj)
-#diag(dmat) <- NA
-
-#dmax <- max(apply(dmat,2,min,na.rm=TRUE))
-
-
 polygon = st_polygon(list(as.matrix(rbind(polygons, polygons[1,]))))
 
 p <- polylabelr::poi(polygon, precision = 0.01)
@@ -64,7 +49,6 @@ area <- pi * radius^2
 
 filenames <- list.files(in_directory, pattern="*.csv", full.names=TRUE)
 leaf <- lapply(filenames, read.csv)
-leaf <- lapply(leaf, as.matrix)
 .GlobalEnv$area_results <- sapply(leaf, in_circle)
 }
 
