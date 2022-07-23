@@ -1,10 +1,10 @@
-test_meta_dir = "C:/Users/swirl/OneDrive - UNSW/Honours/Thesis/Data Analysis or Code/Data/Labelling List/Validation_list.csv"
-model_summary_dir = "C:/Users/swirl/OneDrive - UNSW/Honours/Thesis/Data Analysis or Code/Data/model_summary.csv"
-model_matches_dir = "C:/Users/swirl/OneDrive - UNSW/Honours/Thesis/Data Analysis or Code/Data/model_matches.csv"
+### NEED TO FIND/REPLACE AT LABELS HERE
+test_meta_dir = "C:/Users/swirl/OneDrive - UNSW/Honours/Thesis/Machine Learning/Labels/Labelling List/Validation_list.csv"
+model_summary_dir = "~/Uni/Honours/Thesis/Machine Learning/Leaf dimensions/Test Five/model_summary.csv"
+model_matches_dir = "~/Uni/Honours/Thesis/Machine Learning/Leaf dimensions/Test Five/model_matches.csv"
 labels = list("Leaf100", "Leaf90", "Leaf50")
-#test = "Two"
 
-machine_to_accuracy("THREE", test_meta_dir, model_summary_dir, model_matches_dir, labels)
+machine_to_accuracy("Five", test_meta_dir, model_summary_dir, model_matches_dir)
 
 machine_to_accuracy <- function(test, test_meta_dir, model_summary_dir, model_matches_dir) {
   library (tidyverse)
@@ -12,7 +12,6 @@ machine_to_accuracy <- function(test, test_meta_dir, model_summary_dir, model_ma
   
   dir.create(path = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test)))
   
-#labels here
   test_meta <- read.csv(test_meta_dir) %>% 
     select (id, !!!labels, decimalLongitude, decimalLatitude) %>% 
     filter (!is.na(Leaf90))
@@ -71,11 +70,14 @@ machine_to_accuracy <- function(test, test_meta_dir, model_summary_dir, model_ma
     theme_bw() +
     theme(axis.text.x = element_text(angle = 50, vjust = 0.5, hjust=0.35), legend.position = "none")
   
-  #
+  model_matches_all$pr_cat_id <- as.list(levels(model_matches_all$pr_cat_id))
+  
+  #labels here
   test_meta_plot <- test_meta %>% 
     select(!!!labels, id) %>% 
-    transform(labels[1]=as.numeric(labels[1]), labels[2]=as.numeric(labels[2]), labels[3]=as.numeric(labels[3])#, labels[4]=as.numeric(labels[4])
-                                                                                                     )
+    transform(Leaf100=as.numeric(Leaf100), Leaf90=(Leaf90), Leaf50=as.numeric(Leaf50)#[, labels[4]=as.numeric(labels[4])]
+              )
+#    transform(Leaf100=as.numeric(Leaf100), Leaf90=as.numeric(Leaf90), Leaf50=as.numeric(Leaf50)))
   test_meta_plot <- reshape2::melt(test_meta_plot, variable.name = "pr_cat_id", value.name = "n")
   test_meta_plot <- test_meta_plot %>% 
     group_by(pr_cat_id) %>% 
@@ -128,6 +130,7 @@ machine_to_accuracy <- function(test, test_meta_dir, model_summary_dir, model_ma
   
   model_matches_all <- model_matches_plot
   colnames(model_matches_all) <- c('pr_cat_id','model_matches_all')
+  model_matches_all$pr_cat_id <- as.list(levels(model_matches_all$pr_cat_id))
   
   p_df_join <- left_join(model_matches_precision, model_matches_all, by='pr_cat_id')
 
@@ -153,17 +156,20 @@ machine_to_accuracy <- function(test, test_meta_dir, model_summary_dir, model_ma
   colnames(difference_together)<-c("pr_cat_id", "difference")
   IoU_together <- model_matches_IoU 
   colnames(IoU_together) <- c("pr_cat_id", "IoU_cat_avg")
+  difference_together$pr_cat_id <- as.list(levels(difference_together$pr_cat_id))
   
   .GlobalEnv$IoU_differences_join <- left_join(difference_together, IoU_together, by = "pr_cat_id")
   #numercal_accuracy_p_r_F1 <- data.frame(p,r,F1) %>% 
     #reshape2::melt()
-  
+  .GlobalEnv$IoU_differences_join <- apply(IoU_differences_join,2,as.character)
+  .GlobalEnv$p_df <- apply(p_df,2,as.character)
+  .GlobalEnv$r_df_join <- apply(r_df_join,2,as.character)
   #all together now!
   csv <- function(IoU_differences_join, p_df, r_df_join, F1){
-    write.csv(IoU_differences_join, file = paste0(getwd(), "/Machine_accuracy_results/Test ", paste0(test),"/IoU_differences_join.csv"))
-    write.csv(p_df, file = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test),"/numercal_accuracy_p_df.csv"))
-    write.csv(r_df_join, file = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test),"/numercal_accuracy_r_df.csv"))
-    write.csv(F1, file = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test),"/numercal_accuracy_F1_df.csv"))
+   write.csv(IoU_differences_join, file = paste0(getwd(), "/Machine_accuracy_results/Test ", paste0(test),"/IoU_differences_join.csv"))
+   write.csv(p_df, file = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test),"/numercal_accuracy_p_df.csv"))
+   write.csv(r_df_join, file = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test),"/numercal_accuracy_r_df.csv"))
+   write.csv(F1, file = paste0(getwd(), "/Machine_accuracy_results/Test ",paste0(test),"/numercal_accuracy_F1_df.csv"))
   }
   
   csv(IoU_differences_join, p_df, r_df_join, F1)
