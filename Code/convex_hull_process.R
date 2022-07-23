@@ -10,7 +10,7 @@ convex_hull_calculations <- function(in_directory){
   
   calculating_hull <- function(leaf) {
     leaf = leaf[,-1]
-    df.long <- melt(leaf)
+    df.long <- melt(as.matrix(leaf))
     df.subset <- df.long %>% 
       filter(value==1)
     df.hull <- df.subset[,-3]
@@ -61,7 +61,7 @@ lines(X[hpts, ], col = "red")
 dev.off()
 
 
-## (not working) plotting image on ggplot from https://ggplot2.tidyverse.org/articles/extending-ggplot2.html
+## (not working and kept aside for future ref :) plotting image on ggplot from https://ggplot2.tidyverse.org/articles/extending-ggplot2.html
 find_hull <- function(df.long) df.long[chull(df.long[,1], df.long[,2]), ]
 hulls <- plyr::ddply(df.long, "Var1", find_hull)
 
