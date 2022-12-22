@@ -26,6 +26,7 @@ library(lme4)
 library(treeplyr)
 library(reshape2)
 library(stringr)
+library(modelbased)
 ```
 
 #Cleaning herbarium metadata
@@ -1575,7 +1576,6 @@ Considering that each leaf from each sheet not being independent.
 				2. Making sheet nested within species (which is the random variable)
 				3. Making sheet nested within subgenera
 ```{r}
-library("modelbased")
 rsheet_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id), data=ref_result_RO)
 
 rsheet_glm_df_int <- estimate_grouplevel(rsheet_glm) %>% 
@@ -2127,7 +2127,8 @@ for (i in 712:1254) {
 
 ggplot(divtime_df, aes(x=sum_edge, y=slope)) +
   geom_point() +
-  geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5)
+  geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5) +
+  theme_bw()
 ```
 
 ##Cutting tree at set intervals and plotting slopes
@@ -2195,11 +2196,9 @@ for (interval in intervals){
 colnames(sp_bool) <- intervals
 sp_bool <- cbind(sp_bool, scientificName = sp_list)
 
-#ref_result_phylint <- inner_join(ref_result_RO, as.data.frame(sp_bool), by = "scientificName")
-
 #Plotting by species
-rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_phylint)
-#Warning: Model failed to converge with max|grad| = 0.0262881 (tol = 0.002, component 1)
+rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO)
+    #Warning: Model failed to converge with max|grad| = 0.0262881 (tol = 0.002, component 1)
 
 rsp_glm_df_slp <- estimate_grouplevel(rsp_glm) %>% 
   filter(Group=="scientificName", Parameter == "log10(Prec)") %>% 
