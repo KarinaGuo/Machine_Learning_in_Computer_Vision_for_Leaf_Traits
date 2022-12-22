@@ -23,6 +23,9 @@ library(formattable)
 library(phylobase)
 library(adephylo)
 library(lme4)
+library(treeplyr)
+library(reshape2)
+library(stringr)
 ```
 
 #Cleaning herbarium metadata
@@ -126,16 +129,43 @@ ggplot (ref_results_resid, aes(x=mask_area_results, y=residuals)) +
 
 QC_data <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/QC_joined_final_results.csv")
 ggplot (QC_data, aes(x=mask_area_results)) +
-  geom_histogram(bins = 30, aes(fill=QC), position="dodge")  +
+  geom_histogram(aes(y = after_stat(count / sum(count)), fill=QC), bins = 30, position="dodge")  +
+  geom_freqpoly(aes(y = after_stat(count / sum(count)))) +
+  theme_bw() +
+  facet_wrap(~QC)
+
+ggplot (QC_data, aes(x=mask_area_results)) +
+  geom_histogram(aes(fill=QC), bins = 30, position="dodge")  +
   geom_freqpoly() +
   theme_bw() +
   facet_wrap(~QC)
 
-ggplot (QC_data, aes(y=mask_area_results, x=QC)) +
-  geom_boxplot() +
-  theme_bw() 
-  
+ggplot (QC_data, aes(x=mask_area_results)) +
+  geom_histogram(bins = 30, position="dodge")  +
+  geom_freqpoly() +
+  theme_bw()
 
+hist_Y <- QC_data %>% 
+  dplyr::filter(QC == "Y")
+hist_N <- QC_data %>% 
+  dplyr::filter(QC == "N")
+hist_info <- hist(QC_data$mask_area_results)  
+
+hist_counts <- hist_info$counts 
+hist_breaks <- hist_info$breaks[-1]
+hist_Y_counts <- hist(hist_Y$mask_area_results)$counts 
+hist_N_counts <- hist(hist_N$mask_area_results)$counts
+
+hist_N_counts <- append(hist_N_counts, "0")
+hist_N_counts <- append(hist_N_counts, "0")
+hist_N_counts <- append(hist_N_counts, "0")
+
+hist_N_density <- as.integer(hist_N_counts)/hist_counts
+hist_Y_density <- hist_Y_counts/hist_counts
+
+barplot(hist_Y_density, names=hist_breaks, xlab="bins", ylab="count / bin sum", main = "hist_Y_density")
+
+barplot(hist_N_density, names=hist_breaks, xlab="bins", ylab="count / bin sum", main = "hist_N_density")
 ```
 ##Simulating error-filled dataset
 ```{r}
@@ -371,11 +401,11 @@ ref_result_RO_spsumm <- ref_result_RO %>%
   summarise(mean_ML=mean(mask_area_results))
 
 comb_mean_Aust <- inner_join(EucalyptsArea_spsumm, ref_result_RO_spsumm, by = 'scientificName') %>% 
-  mutate (diff = mean_AusTraits-mean_ML, source = "Aust") %>% 
-  select(scientificName, diff, source)
+  mutate (diff = mean_AusTraits-mean_ML, source = "Aust", diff_normalised = diff/mean_AusTraits) %>% 
+  select(scientificName, diff, source, diff_normalised)
 comb_mean_Wright <- inner_join(ref_result_RO_spsumm, Wrights_data_spsumm, by = 'scientificName') %>% 
-  mutate (diff = mean_Wright-mean_ML, source = "Wright") %>% 
-  select(scientificName, diff, source)
+  mutate (diff = mean_Wright-mean_ML, source = "Wright", diff_normalised = diff/mean_Wright) %>% 
+  select(scientificName, diff, source, diff_normalised)
 
 comb_mean <- rbind(comb_mean_Aust, comb_mean_Wright)
 
@@ -384,6 +414,14 @@ ggplot(comb_mean, aes(x=scientificName, y=diff)) +
   facet_wrap(~source)
 
 ggplot(comb_mean, aes(x=diff, y=..density..)) +
+  geom_histogram(bins=60) +
+  facet_wrap(~source)
+
+ggplot(comb_mean, aes(x=scientificName, y=diff_normalised)) +
+  geom_point() +
+  facet_wrap(~source)
+
+ggplot(comb_mean, aes(x=diff_normalised, y=..density..)) +
   geom_histogram(bins=60) +
   facet_wrap(~source)
 
@@ -2006,7 +2044,7 @@ tree_node_dated$tip.label <- gsub(" ANBG", "", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub(" MC", "", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub(" Mt Annan", "", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub(" Royal Canberra Golf", "", tree_node_dated$tip.label)
-tree_node_dated$tip.label <- gsub(" LAN.", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" LAN[[:digit:]]+", "", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub(" Jervis Bay", "", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub(" no sn", "", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub(" BG", "", tree_node_dated$tip.label)
@@ -2014,8 +2052,7 @@ tree_node_dated$tip.label <- gsub(" L[[:digit:]]+", "", tree_node_dated$tip.labe
 tree_node_dated$tip.label <- gsub(" E[[:digit:]]+", "", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub(" [[:digit:]]+", "", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub("subsp", "subsp.", tree_node_dated$tip.label)
-
-
+tree_node_dated$tip.label <- gsub("'.*-'", "", tree_node_dated$tip.label)
 
 trait_tree <- ref_result_RO %>%
   filter(ref_result_RO$scientificName %in% tree_node_dated$tip.label) %>% 
@@ -2067,6 +2104,115 @@ obj_CR <- contMap(tree_node_dated_trim, mean_CR, plot = FALSE, fsize = c(0.05,0.
 #plot(obj_MAR)
 #dev.off()
 
+phylo_edgelim <- tree_node_dated_trim %>%
+  treeplyr::filter(edge.length<1)
+```
+##Plotting at divergence times
+```{r}
+divtime_df = NULL
+
+for (i in 712:1254) {
+  tryCatch({
+    tmp_tree <- extract.clade(tree_node_dated, i) 
+    tmp_sum_edge <- sum(tmp_tree[["edge.length"]])
+    ref_result_RO$tmp_bool <- ref_result_RO[["scientificName"]] %in% tmp_tree[["tip.label"]]
+    tmp_res <- ref_result_RO %>% 
+      filter(tmp_bool == "TRUE")
+    tmp_lm <- coef(lm(log10(mask_area_results) ~ log10(Prec), data=tmp_res))
+    tmp_slp <- as.numeric(tmp_lm[2])
+    tmp_df <- data.frame(interval = i, sum_edge = tmp_sum_edge, slope = tmp_slp)
+    divtime_df <- as.data.frame(rbind(divtime_df, tmp_df))
+    }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+  }
+
+ggplot(divtime_df, aes(x=sum_edge, y=slope)) +
+  geom_point() +
+  geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5)
+```
+
+##Cutting tree at set intervals and plotting slopes
+```{r}
+remove_tips <- stringr::str_detect(tree_node_dated$tip.label, "Eucalyptus|Angophora|Corymbia")
+missing_tips <- tree_node_dated$tip.label[!remove_tips]
+tree_node_dated <- drop.tip(tree_node_dated, tip = missing_tips)
+
+# refine getting eucalypts
+getMRCA(tree_node_dated, tip=tree_node_dated$tip.label)->eucnode
+tree=extract.clade(tree_node_dated,eucnode)
+
+bt_max <- max(branching.times(tree))
+ntax   <- length(tree$tip.label)
+taxout <- data.frame(T0=tree$tip.label)
+ 
+intervals <- 20
+ivals     <- seq(from = 1/intervals, to = 1 - 1/intervals, by = 1/intervals) * bt_max
+
+source("~/Uni/Honours/Thesis/Data Analysis or Code/Code/cutPhylo.R")
+
+# catches the mapping of old tips to new tips...
+for (ii in 1:length(ivals)) {
+   cat(" Cutting tree at age ", ivals[ii], "\n")
+   ii_tax <- tree$tip.label
+   ii_cut <- cutPhyloTipMap(tree, age=ivals[ii],keep.lineage=TRUE)
+   ii_len_cut <- length(ii_cut$CutClades)
+   for (t in 1:ii_len_cut) {
+      tmptips <- ii_cut$CutClades[[ t ]]$tips
+      ii_tax[ match(tmptips,ii_tax) ] <- paste0("i",ii_cut$CutClades[[ t ]]$newtip)
+   }
+   cat(" Cut complete, processing ... \n")
+   taxout <- cbind(taxout,ii_tax)
+   tchar <- paste0("T", round(ivals[ii],2))
+   colnames(taxout)[ncol(taxout)] <- tchar
+}
 
 
+#write.table(taxout, "~/Delete/cut_taxa.csv",sep=",",row.name=FALSE,col.name=TRUE)
+
+### GLM
+### rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO)
+### rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1|scientificName), data=ref_result_RO)
+
+### 
+###
+### for (i in 1:length(intervals)) {
+###    join taxon & leaf size data objects - ref_result_tax_cut
+###    create a taxon_TXX factor with taxon at cut point called TaxCut
+###    cut_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1|TaxCut), data=ref_result_tax_cut)
+###    add cut_glm to something (a list or a table of coefficients)
+### }
+
+#Creating a boolean T/F for whether the taxa is present at each interval, then joining to main dataframe
+taxa_intervals <- read.csv("~/Delete/cut_taxa.csv") 
+intervals <- colnames(taxa_intervals)
+
+sp_list <- taxa_intervals$T0
+
+sp_bool = NULL
+for (interval in intervals){
+  sp_bool <- cbind(sp_bool, taxa_intervals[[interval]] %in% sp_list)
+}
+
+colnames(sp_bool) <- intervals
+sp_bool <- cbind(sp_bool, scientificName = sp_list)
+
+#ref_result_phylint <- inner_join(ref_result_RO, as.data.frame(sp_bool), by = "scientificName")
+
+#Plotting by species
+rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_phylint)
+#Warning: Model failed to converge with max|grad| = 0.0262881 (tol = 0.002, component 1)
+
+rsp_glm_df_slp <- estimate_grouplevel(rsp_glm) %>% 
+  filter(Group=="scientificName", Parameter == "log10(Prec)") %>% 
+  select(Level, Coefficient)
+colnames(rsp_glm_df_slp) <- c('scientificName', 'Coefficient')
+
+ref_result_phylint <- inner_join(as.data.frame(sp_bool), rsp_glm_df_slp, by = "scientificName")
+
+melt_phylint <- reshape2::melt(ref_result_phylint, id = c("scientificName", "Coefficient")) %>% 
+  filter(value==TRUE)
+
+ggplot(melt_phylint, aes(x=variable, y=Coefficient)) +
+  geom_point() +
+  theme_bw()
+#+geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5)
 ```
