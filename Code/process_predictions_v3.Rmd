@@ -3,72 +3,88 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-```{r message=FALSE, warning=FALSE}
+```{r Loading libraries, message=FALSE, warning=FALSE}
 library(data.table)
 library(tidyverse)
-library(raster)
-library(geodata)
-library(sp)
-library(ggfortify)
-library(rstatix)
-library(ggpubr)
-library(rgdal)
-library(rgeos)
-library(maptools)
-library(tmap)
-library(ape)
-library(tidytree)
-library(phytools)
-library(formattable)
-library(phylobase)
-library(adephylo)
-library(lme4)
-library(treeplyr)
-library(reshape2)
-library(stringr)
-library(modelbased)
+library(raster) # Creating spatial plots
+library(geodata) # Retrieving climate data
+library(sp) # Retrieving climate data
+#library(ggfortify)
+library(rstatix) # Used to remove outliers
+library(ggpubr) # Using ggarrange to create graphs
+library(rgdal) 
+library(rgeos) # Creating spatial plots
+library(maptools) # Creating spatial plots
+library(tmap) # Creating spatial plots
+library(ape) # Phylogeny analyses
+library(tidytree) # Phylogeny analyses
+library(phytools) # Phylogeny analyses
+#library(formattable)
+library(phylobase) # Phylogeny analyses
+library(adephylo) # Phylogeny analyses
+library(lme4) # Linear model analyses
+library(treeplyr) # Phylogeny analyses
+library(reshape2) # Data wrangling
+library(stringr) # Data wrangling
+library(modelbased) # Linear model analyses
 ```
 
 #Cleaning herbarium metadata
-```{r}
+```{r Cleaning herbarium metadata}
 library(CoordinateCleaner)
+
+  # Reading in the metadata from the herbarium then joining to create a single dataframe. A new column is created that joins the genus and species of each row
 data_herbarium_euc_full <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/euc.csv")
-data_herbarium_ang_full <- read.csv ("~/Uni/Honours/Thesis/Data Analysis or Code/Data/ang.csv", header = T) 
+data_herbarium_ang_full <- read.csv ("~/Uni/Honours/Thesis/Data Analysis or Code/Data/ang.csv", header = T)
 data_herbarium_cor_full <- read.csv ("~/Uni/Honours/Thesis/Data Analysis or Code/Data/cor.csv", header = T)
-data_herbarium_full <- rbind(data_herbarium_ang_full, data_herbarium_cor_full, data_herbarium_euc_full) %>% 
+data_herbarium_full <- rbind(data_herbarium_ang_full, data_herbarium_cor_full, data_herbarium_euc_full) %>%
   unite ("species", genus:specificEpithet, remove = F, sep = " ") %>% 
-  filter (!is.na(decimalLatitude))
+  filter (!is.na(decimalLatitude), !is.na(decimalLongitude))
 
+  # Cleaning the herbarium data by the base options available
 remove <- clean_coordinates(data_herbarium_full, lon = 'decimalLongitude', lat = 'decimalLatitude') 
-
 data_herbarium_clean <- remove %>% 
   filter (.summary == "TRUE")
 ```
 
-#Joining results
-```{r}
-result <- fread("C:/Users/swirl/Downloads/joined_final_results.csv")
-result_uncleaned <- fread("C:/Users/swirl/Downloads/joined_final_results_unclean.csv")
+#Creating results
+```{r Creating results}
+  # Reading in the final results data set along with a table that is used to join a species to their subgenus
+result <- fread("C:/Users/swirl/Downloads/joined_final_results.csv") 
+#result_uncleaned <- fread("C:/Users/swirl/Downloads/joined_final_results_unclean.csv")
 lookup <- fread("~/Uni/Honours/Thesis/Data Analysis or Code/Lookup_table.csv")
-rem_result <- result %>% 
-  filter(max_mask_iou<0.7)
+
+  # Creating a data set that removes leaves that are found to be overlapping as indicated by an identical max_mask_iou. 
+rem_result <- result %>% filter(max_mask_iou<0.7) # Data frame of all leaves with no overlap
 cleaned_result <- result %>% 
-  group_by(id, max_mask_iou) %>% 
-  filter(max_mask_iou>=0.7)
-mask <- !duplicated(cleaned_result[, 'max_mask_iou'])
-cleaned_result <- cleaned_result[mask, ]
+  filter(max_mask_iou>=0.7) # Data frame of leaves with overlap
+mask <- !duplicated(cleaned_result[, 'max_mask_iou']) # Creates a boolean mask of leaves that are duplicated (same max_mask_iou)
+cleaned_result <- cleaned_result[mask, ] # Removing duplicated masks
 
 #ref_result <- result %>% mutate(scientificName = paste(genus, specificEpithet, sep=" ")) 
 
+  # Joining leaves that aren't duplicates, and creating a final data set that includes their species name and subgenera
 ref_result <- rbind(rem_result, cleaned_result) %>% 
   mutate(scientificName = paste(genus, specificEpithet, sep=" ")) 
-
 ref_result <- left_join(ref_result, lookup, by = "scientificName") %>% 
   mutate(log_MAR = log10(mask_area_results), log_CAR = log10(circle_area_results)) %>% replace_na(list(Subgenus = 'Unknown'))
+
+  # Removing outliers using the function identify_outliers from the package rstatix
+ref_result_RO <- subset(ref_result, !log_MAR %in% identify_outliers(ref_result, "log_MAR")$log_MAR)
+ref_result_RO <- subset(ref_result_RO, !log_CAR %in% identify_outliers(ref_result_RO, "log_CAR")$log_CAR)
+ref_result_RO <- subset(ref_result_RO, !curvature_results %in% identify_outliers(ref_result_RO, "curvature_results")$curvature_results)
 ```
 
 #Loading climate data
-```{r}
+```{r Loading climate data}
+  # Appending climate data to the data set. This is at a 2.5 minutes resolution and currently appends the variables
+  #' BIO1 = Annual Mean Temperature
+  #' BIO12 = Annual Precipitation
+  #' BIO6 = Min Temperature of Coldest Month
+  #' BIO5 = Max Temperature of Warmest Month
+  #' BIO8 = Mean Temperature of Wettest Quarter
+  #' BIO9 = Mean Temperature of Driest Quarter
+
 r <- raster::getData("worldclim",var="bio",res=2.5)
 r <- r[[c(1,12,6,5,8,9)]]
 names(r) <- c("Temp","Prec","Coldest","Hottest","Wettest","Driest")
@@ -89,45 +105,25 @@ ref_result <- ref_result %>%
   mutate(log_MAP = log10(Prec))
 ```
 
-#Subsetting data + removing outliers by IQR
-```{r}
-area_results <- within(ref_result, rm("circle_area_results", "curvature_results"))
-
-area_results_RO <- subset(area_results, !log_MAR %in% identify_outliers(area_results, "log_MAR")$log_MAR) %>% 
-  dplyr::filter(decimalLatitude <= -10.689167, decimalLatitude >= -43.644444) %>% 
-  dplyr::filter(decimalLongitude <= 153.636944, decimalLongitude >= 113.155000)
-
-circle_results <- within(ref_result, rm("mask_area_results", "curvature_results"))
-
-circle_results_RO <- subset(circle_results, !log_CAR %in% identify_outliers(circle_results, "log_CAR")$log_CAR) %>% 
-  dplyr::filter(decimalLatitude <= -10.689167, decimalLatitude >= -43.644444) %>% 
-  dplyr::filter(decimalLongitude <= 153.636944, decimalLongitude >= 113.155000)
-
-curvature_only_results  <- within(ref_result, rm("mask_area_results", "circle_area_results")) 
-
-curvature_results_RO <- subset(curvature_only_results, !curvature_results %in% identify_outliers(curvature_only_results, "curvature_results")$curvature_results)
-
-
-ref_result_RO <- subset(ref_result, !log_MAR %in% identify_outliers(ref_result, "log_MAR")$log_MAR)
-ref_result_RO <- subset(ref_result_RO, !log_CAR %in% identify_outliers(ref_result_RO, "log_CAR")$log_CAR)
-ref_result_RO <- subset(ref_result_RO, !curvature_results %in% identify_outliers(ref_result_RO, "curvature_results")$curvature_results)
-
-```
-
 #Errors
 ##Seeing bias in errors
-```{r}
+```{r Plotting residuals}
+  # Looking at the distribution of residuals based on the linear model below.
 PrecxMar_lm <- lm(log10(mask_area_results) ~ log10(Prec), data=ref_result_RO)
 
 ref_results_resid <- ref_result_RO
 ref_results_resid$residuals <- PrecxMar_lm$residuals
 
-ggplot (ref_results_resid, aes(x=mask_area_results, y=residuals)) +
+ggplot (ref_results_resid, aes(x=Prec, y=residuals)) +
   geom_point(size=0.5, alpha =0.1) +
   scale_x_continuous(trans='log10') +
+  #scale_y_continuous(trans='log10') +
   geom_hline(yintercept=0, color="red")
+```
 
-
+```{r QC of our classifier}  
+  # QC_data is sourced from retrieving 100 leaves that passed the classifier model. These 100 leaves were then manually sorted into valid (Y) and invalid (N) leaves to see whether there was a bias in our error towards bigger or smaller leaves. The first plot gives us a density plot of the counts of each bin separated into the leaf areas, the second plot gives us a basic count of each leaf area. 
+  # The third plot gives us the percentage of leaves in each bin that fall under Y or N. I.e. in hist_Y_density, '1.0 count/bin sum' of '40 bins' indicates all leaves of leaf areas 35-40 cm^2 were 'Y'. Note, the bins are separated as such, 0-5cm2, 5-10cm2, ..., 35-40cm2 
 QC_data <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/QC_joined_final_results.csv")
 ggplot (QC_data, aes(x=mask_area_results)) +
   geom_histogram(aes(y = after_stat(count / sum(count)), fill=QC), bins = 30, position="dodge")  +
@@ -140,11 +136,6 @@ ggplot (QC_data, aes(x=mask_area_results)) +
   geom_freqpoly() +
   theme_bw() +
   facet_wrap(~QC)
-
-ggplot (QC_data, aes(x=mask_area_results)) +
-  geom_histogram(bins = 30, position="dodge")  +
-  geom_freqpoly() +
-  theme_bw()
 
 hist_Y <- QC_data %>% 
   dplyr::filter(QC == "Y")
@@ -168,13 +159,14 @@ barplot(hist_Y_density, names=hist_breaks, xlab="bins", ylab="count / bin sum", 
 
 barplot(hist_N_density, names=hist_breaks, xlab="bins", ylab="count / bin sum", main = "hist_N_density")
 ```
+
 ##Simulating error-filled dataset
 ```{r}
+  # This chunk is still a work-in-progress, its goal is to create a large amount of fake data to see how much error our results can withhold
 set.seed(16)
 results_errorsim <- ref_result_RO %>% 
-
- dplyr::filter(decimalLatitude <= -10.689167, decimalLatitude >= -43.644444) %>% 
-  dplyr::filter(decimalLongitude <= 153.636944, decimalLongitude >= 113.155000)  
+# dplyr::filter(decimalLatitude <= -10.689167, decimalLatitude >= -43.644444) %>% 
+#  dplyr::filter(decimalLongitude <= 153.636944, decimalLongitude >= 113.155000)  
   
 MAR_errorsim <- runif(n = as.integer(ceiling(count(ref_result_RO)*0.1)), min = min(ref_result_RO$mask_area_results)*0.7, max = max(ref_result_RO$mask_area_results) * 0.1)
 CAR_errorsim <- runif(n = as.integer(ceiling(count(ref_result_RO)*0.1)), min = min(ref_result_RO$circle_area_results)*0.7, max = max(ref_result_RO$circle_area_results) * 0.1)
@@ -186,7 +178,8 @@ long_error <- runif(n = as.integer(ceiling(count(ref_result_RO)*0.1)), min = 113
 ```
 
 #Comparing leaf area to in circle area
-```{r}
+```{r Plots between traits}
+  # Basic plots against leaf area and the area of the largest in-circle, and curvature
 ggplot (data = ref_result_RO, mapping = aes(x=mask_area_results, y=circle_area_results)) +
   geom_point(alpha = 0.06) +
   stat_smooth(method = 'lm', formula = y~x) +
@@ -200,19 +193,17 @@ ggplot (data = ref_result_RO, mapping = aes(x=mask_area_results, y=curvature_res
   theme_bw()
 ```
 
-#Plot traits as hist
-```{r}
-p1 <- ggplot(data=area_results_RO, mapping = aes(x=log_MAR)) +
-               geom_histogram(bins = 120) +
-  theme_bw()
+#Plot traits as histogram
+```{r Plot traits as histogram}
+  # Seeing the distribution of the data as a basic histogram for all three traits
+p1 <- ggplot(data=ref_result_RO, mapping = aes(x=log_MAR)) +
+               geom_histogram(bins = 120) + theme_bw()
   
-p2 <- ggplot(data=circle_results_RO, mapping = aes(x=log_CAR)) +
-               geom_histogram(bins = 120) +
-  theme_bw()
+p2 <- ggplot(data=ref_result_RO, mapping = aes(x=log_CAR)) +
+               geom_histogram(bins = 120) + theme_bw()
 
-p3 <- ggplot(data=curvature_results_RO, mapping = aes(x=curvature_results)) +
-               geom_histogram(bins = 120) +
-  theme_bw()
+p3 <- ggplot(data=ref_result_RO, mapping = aes(x=curvature_results)) +
+               geom_histogram(bins = 120) + theme_bw()
 
 
 plot_all <- ggarrange(p1,p2,p3, 
@@ -222,21 +213,23 @@ plot_all <- ggarrange(p1,p2,p3,
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/hist.jpg",plot=plot_all, units = "px", height = 1500, width = 2600, limitsize = FALSE)
 ```
 
-#Plot traits as dens_hist
-```{r}
-p1 <- ggplot(data=area_results_RO, mapping = aes(y = ..density.., x=log_MAR)) +
+#Histogram plot of trait grouped by subgenera
+```{r Histogram plot of trait grouped by subgenera}
+  #' p1-p3 Seeing the distribution of the traits across the different subgenera
+  #' p4 Seeing the distribution of leaf area across the subgenera, faceted by subgenus 
+p1 <- ggplot(data=ref_result_RO, mapping = aes(y = ..density.., x=log_MAR)) +
   geom_histogram(bins = 15, aes(fill=Subgenus), position="dodge") +
   theme_bw()
   
-p2 <- ggplot(data=circle_results_RO, mapping = aes(y = ..density.., x=log_CAR)) +
+p2 <- ggplot(data=ref_result_RO, mapping = aes(y = ..density.., x=log_CAR)) +
   geom_histogram(bins = 15, aes(fill=Subgenus), position="dodge") +
   theme_bw()
 
-p3 <- ggplot(data=curvature_results_RO, mapping = aes(y = ..density.., x=curvature_results)) +
+p3 <- ggplot(data=ref_result_RO, mapping = aes(y = ..density.., x=curvature_results)) +
   geom_histogram(bins = 15, aes(fill=Subgenus), position="dodge") +
   theme_bw()
 
-p4 <- ggplot(data=area_results_RO, mapping = aes(y = ..density.., x=log_MAR)) +
+p4 <- ggplot(data=ref_result_RO, mapping = aes(y = ..density.., x=log_MAR)) +
   geom_histogram(bins = 15, aes(fill=Subgenus), position="dodge") +
   theme_bw() +
   facet_wrap(~Subgenus)
@@ -250,18 +243,19 @@ ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/density_hist.j
 ```
 
 #Trait x latitude/longitude
-```{r}
-p1 <- ggplot(data=area_results_RO, mapping = aes(x = decimalLatitude, y=log_MAR)) +
+```{r Trait x latitude/longitude}
+  # Seeing the distribution of traits across latitude and longitude
+p1 <- ggplot(data=ref_result_RO, mapping = aes(x = decimalLatitude, y=log_MAR)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   theme_bw() + 
   theme (legend.position="none") 
   
-p2 <- ggplot(data=circle_results_RO, mapping = aes(x = decimalLatitude, y=log_CAR)) +
+p2 <- ggplot(data=ref_result_RO, mapping = aes(x = decimalLatitude, y=log_CAR)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   theme_bw() + 
   theme (legend.position="none") 
 
-p3 <- ggplot(data=curvature_results_RO, mapping = aes(x = decimalLatitude, y=curvature_results)) +
+p3 <- ggplot(data=ref_result_RO, mapping = aes(x = decimalLatitude, y=curvature_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   theme_bw() + 
   theme (legend.position="none") 
@@ -269,12 +263,35 @@ p3 <- ggplot(data=curvature_results_RO, mapping = aes(x = decimalLatitude, y=cur
 
 plot_all <- ggarrange(p1,p2,p3,
           common.legend = TRUE, legend = "none")  
+
+p4 <- ggplot(data=ref_result_RO, mapping = aes(x = decimalLongitude, y=log_MAR)) +
+  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
+  theme_bw() + 
+  theme (legend.position="none") 
+  
+p5 <- ggplot(data=ref_result_RO, mapping = aes(x = decimalLongitude, y=log_CAR)) +
+  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
+  theme_bw() + 
+  theme (legend.position="none") 
+
+p6 <- ggplot(data=ref_result_RO, mapping = aes(x = decimalLongitude, y=curvature_results)) +
+  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
+  theme_bw() + 
+  theme (legend.position="none") 
+
+
+plot_all_2 <- ggarrange(p4,p5,p6,
+          common.legend = TRUE, legend = "none")  
+
+plot_all
+plot_all_2
 ```
 
 #AusTraits
-```{r}
+```{r Repeating analysis on AusTraits - Trait x Climate}
+  # This chunk of code extracts the leaf area measurements of eucalypts from the AusTraits database (v3.0.2). From here using its latitude and longitude of their collection site, their respective climatic variables are appended to create climate x trait plots
+
 library(austraits) 
-library(tidyverse)
 austraits <- load_austraits(version = "3.0.2", path = "data/austraits")
 
 Eucs <- extract_taxa(austraits, genus = "Eucalyptus") %>% join_sites()
@@ -356,8 +373,8 @@ EucalyptsArea <- EucalyptsArea %>%
   mutate(log_MAP = log10(Prec))
 
 
-p1 <- ggplot (data = EucalyptsArea, mapping = aes (x=Temp, y=mask_area_results, colour = "red")) +
-  geom_jitter(alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
+p1 <- ggplot (data = EucalyptsArea, mapping = aes (x=Temp, y=mask_area_results)) +
+  geom_jitter(alpha = 0.1, width = 0.1, height = 0.1, size = 0.5) +
   labs(y="Leaf area (cm2)", x = "Mean annual precipitation (mm)") +
   theme_bw() +
   theme (legend.position="none") +
@@ -370,20 +387,70 @@ ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Au
 ```
 
 ##Comparing DB means v Ours species' mean
-```{r}
+```{r Comparing AusTraits/Wright species mean}
+  # Looking into the differences in leaf area by species, recorded in other databases (Wright's and AusTraits)
+
+  # Wright's data is available at http://dx.doi.org/10.1126/science.aal4760. Data used were filtered into woody simple leaves.
 Wrights_data_full <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/Wrights_data.csv") 
 
 Wrights_data <- Wrights_data_full %>% 
-  filter(Woody == "woody", Compound == "S") %>% 
+  filter (Woody == "woody", Compound == "S") %>% 
   mutate (source = "Wright") %>% 
   select (MAR, Latitude, Longitude, MAT, MAP, source, Name_orig)
-colnames(Wrights_data) <- c('MAR', 'decimalLatitude', 'decimalLongitude', 'Temp', 'Prec', 'source', 'scientificName')
+colnames (Wrights_data) <- c('MAR', 'decimalLatitude', 'decimalLongitude', 'Temp', 'Prec', 'source', 'scientificName')
 
 Wrights_data_euc <- Wrights_data[grep("^Eucalyptus*", Wrights_data$scientificName), ]
 Wrights_data_ang <- Wrights_data[grep("^Angophora*", Wrights_data$scientificName), ]
 Wrights_data_cor <- Wrights_data[grep("^Corymbia*", Wrights_data$scientificName), ]
 Wrights_data_eucs <- rbind(Wrights_data_euc, Wrights_data_ang, Wrights_data_cor)
 colnames(Wrights_data_eucs)[1] <- "mask_area_results"
+
+  # Getting the average  leaf area for Wright's data, AusTraits data and our data respectively
+Wrights_data_spsumm <- Wrights_data_eucs %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  summarise(mean_Wright=mean(mask_area_results))
+
+EucalyptsArea_spsumm <- EucalyptsArea %>% 
+  ungroup() %>% 
+  group_by(taxon_name) %>% 
+  summarise(mean_AusTraits=mean(mask_area_results))
+colnames(EucalyptsArea_spsumm)[1] <- "scientificName"
+
+ref_result_RO_spsumm <- ref_result_RO %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  summarise(mean_ML=mean(mask_area_results))
+
+  # Plotting the absolute and normalised differences between databases. Plotting the distribution of absolute and normalised differences as a density plot
+comb_mean_Aust <- inner_join(EucalyptsArea_spsumm, ref_result_RO_spsumm, by = 'scientificName') %>% 
+  mutate (diff = mean_AusTraits-mean_ML, source = "Aust", diff_normalised = diff/mean_AusTraits) %>% 
+  select(scientificName, diff, source, diff_normalised)
+comb_mean_Wright <- inner_join(ref_result_RO_spsumm, Wrights_data_spsumm, by = 'scientificName') %>% 
+  mutate (diff = mean_Wright-mean_ML, source = "Wright", diff_normalised = diff/mean_Wright) %>% 
+  select(scientificName, diff, source, diff_normalised)
+
+comb_mean <- rbind(comb_mean_Aust, comb_mean_Wright)
+
+ggplot(comb_mean, aes(x=scientificName, y=diff)) +
+  geom_point() +
+  facet_wrap(~source)
+
+ggplot(comb_mean, aes(x=scientificName, y=diff_normalised)) +
+  geom_point() +
+  facet_wrap(~source)
+
+ggplot(comb_mean, aes(x=diff, y=..density..)) +
+  geom_histogram(bins=60) +
+  facet_wrap(~source)
+
+ggplot(comb_mean, aes(x=diff_normalised, y=..density..)) +
+  geom_histogram(bins=60) +
+  facet_wrap(~source)
+```
+
+```{r Plotting the shared eucalypt species mean leaf area of different databases on different axes}
+  # Plotting the shared eucalypt species' mean leaf area of different databases on different axes
 
 Wrights_data_spsumm <- Wrights_data_eucs %>% 
   ungroup() %>% 
@@ -401,35 +468,32 @@ ref_result_RO_spsumm <- ref_result_RO %>%
   group_by(scientificName) %>% 
   summarise(mean_ML=mean(mask_area_results))
 
-comb_mean_Aust <- inner_join(EucalyptsArea_spsumm, ref_result_RO_spsumm, by = 'scientificName') %>% 
-  mutate (diff = mean_AusTraits-mean_ML, source = "Aust", diff_normalised = diff/mean_AusTraits) %>% 
-  select(scientificName, diff, source, diff_normalised)
-comb_mean_Wright <- inner_join(ref_result_RO_spsumm, Wrights_data_spsumm, by = 'scientificName') %>% 
-  mutate (diff = mean_Wright-mean_ML, source = "Wright", diff_normalised = diff/mean_Wright) %>% 
-  select(scientificName, diff, source, diff_normalised)
+Wright_Aust <- inner_join(Wrights_data_spsumm, EucalyptsArea_spsumm, by ="scientificName")
+Wright_Ours <- inner_join(Wrights_data_spsumm, ref_result_RO_spsumm, by ="scientificName")
+Aust_Ours <- inner_join(EucalyptsArea_spsumm, ref_result_RO_spsumm, by ="scientificName")
 
-comb_mean <- rbind(comb_mean_Aust, comb_mean_Wright)
+ggplot(Wright_Aust, aes(x=mean_Wright, y=mean_AusTraits)) +
+  geom_point(aes(colour = scientificName)) +
+  geom_abline(slope=1) +
+  theme(legend.position="none")+ 
+  geom_smooth(method="lm", linewidth = 0.5)
 
-ggplot(comb_mean, aes(x=scientificName, y=diff)) +
-  geom_point() +
-  facet_wrap(~source)
+ggplot(Wright_Ours, aes(x=mean_Wright, y=mean_ML)) +
+  geom_point(aes(colour = scientificName)) +
+  geom_abline(slope=1) +
+  theme(legend.position="none")+ 
+  geom_smooth(method="lm", linewidth = 0.5)
 
-ggplot(comb_mean, aes(x=diff, y=..density..)) +
-  geom_histogram(bins=60) +
-  facet_wrap(~source)
-
-ggplot(comb_mean, aes(x=scientificName, y=diff_normalised)) +
-  geom_point() +
-  facet_wrap(~source)
-
-ggplot(comb_mean, aes(x=diff_normalised, y=..density..)) +
-  geom_histogram(bins=60) +
-  facet_wrap(~source)
-
+ggplot(Aust_Ours, aes(x=mean_AusTraits, y=mean_ML)) +
+  geom_point(aes(colour = scientificName)) +
+  geom_abline(slope=1) +
+  theme(legend.position="none") + 
+  geom_smooth(method="lm", linewidth = 0.5)
 ```
 
-#Plotting Wright's data on top
-```{r}
+#Plotting AusTraits/Wright's data on top
+```{r Plotting AusTraits/Wrights data on top}
+  # Processing Wright's data as above
 Wrights_data_full <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/Wrights_data.csv") 
 
 Wrights_data <- Wrights_data_full %>% 
@@ -443,10 +507,15 @@ Wrights_data_ang <- Wrights_data[grep("^Angophora*", Wrights_data$scientificName
 Wrights_data_cor <- Wrights_data[grep("^Corymbia*", Wrights_data$scientificName), ]
 Wrights_data_eucs <- rbind(Wrights_data_euc, Wrights_data_ang, Wrights_data_cor)
 
-
-area_results_RO_Wright <- area_results_RO %>% 
+ref_result_RO_Wright <- ref_result_RO %>% 
   mutate (source = "ML") %>% 
   select (mask_area_results, decimalLatitude, decimalLongitude, Temp, Prec, source)
+
+
+  #' p1 - Plotting Wright's data and the line of best fit as recorded in his SI 
+  #' p1.5 - Plotting Wright's data and the line of best fit as recorded in his SI; with his eucalypt dataset highlighted
+  #' p2 - Plotting AusTrait's data on top of p1 with both lines of best fits
+  #' p3 - Plotting our data on top of p2. Shows the large increase in volume of data
 
 p1 <- ggplot () +
   geom_jitter(data = Wrights_data, mapping = aes (x=Prec, y=MAR), colour = "#E69F00", alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
@@ -491,8 +560,8 @@ p2 <- ggplot () +
 p3 <- ggplot () +
   geom_jitter(data = EucalyptsArea, mapping = aes (x=Prec, y=mask_area_results), colour = "#757575", alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
   geom_jitter(data=Wrights_data, mapping = aes (x=Prec, y=MAR), colour = "#757575", alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
-  geom_jitter(data = area_results_RO_Wright, mapping = aes (x=Prec, y=mask_area_results), colour = "#E69F00", alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
-  geom_smooth(method = 'lm', data = area_results_RO_Wright, mapping = aes (x=Prec, y=mask_area_results), colour = "Brown", linewidth=0.5) +
+  geom_jitter(data = ref_result_RO_Wright, mapping = aes (x=Prec, y=mask_area_results), colour = "#E69F00", alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
+  geom_smooth(method = 'lm', data = ref_result_RO_Wright, mapping = aes (x=Prec, y=mask_area_results), colour = "Brown", linewidth=0.5) +
   labs(y="Leaf area (cm2)", x = "Mean annual precipitation (mm)") +
   theme_bw() +
   theme (legend.position="none") +
@@ -509,12 +578,27 @@ plot_all<-ggarrange(p1,p1.5,p2,p3,
 
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Every.jpg",plot=plot_all, units = "px", height = 1000, width = 4200, limitsize = FALSE)
 
-#Relationships between leaf size, latitude and climate were quantified using linear mixed regression models using the R package [lme4], which fits models based on restricted maximum likelihood. We treated [climate variables as fixed effects], [site as a random effect] (to account for site-to-site variation not explained by climate variables), and [species as a random effect] (because many species occurred multiple times in the database, at different sites). 
+#From Wright's method: Relationships between leaf size, latitude and climate were quantified using linear mixed regression models using the R package [lme4], which fits models based on restricted maximum likelihood. We treated [climate variables as fixed effects], [site as a random effect] (to account for site-to-site variation not explained by climate variables), and [species as a random effect] (because many species occurred multiple times in the database, at different sites). 
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Wright.jpg",plot=p1, units = "px", height = 1500, width = 1800, limitsize = FALSE)
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_WrightEucs.jpg",plot=p1.5, units = "px", height = 1500, width = 1800, limitsize = FALSE)
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Aus.jpg",plot=p2, units = "px", height = 1500, width = 1800, limitsize = FALSE)
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_All.jpg",plot=p3, units = "px", height = 1500, width = 1800, limitsize = FALSE)
+```
+
+```{r Plotting at different phylogenetic levels}  
+  #' p4 - Plotting our data with species having individual intercepts and slopes
+  #' p5 - Plotting our data with subgenera having individual intercepts and slopes
+  #' p6 - Plotting our data with genera having individual intercepts and slopes
+  #' p7 - Plotting our data with overall line of best fit
 
 p4 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Prec, y=mask_area_results)) +
   geom_jitter(colour = "#bebebe", alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
   geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "#E69F00", linewidth=0.4, alpha = 0.3) +
-  geom_smooth(method = 'lm', data = area_results_RO_Wright, mapping = aes (x=Prec, y=mask_area_results), colour = "Brown", linewidth=0.5) +
+  geom_smooth(method = 'lm', data = ref_result_RO_Wright, mapping = aes (x=Prec, y=mask_area_results), colour = "Brown", linewidth=0.5) +
   labs(y="Leaf area (cm2)", x = "Mean annual precipitation (mm)") +
   theme_bw()+
   theme (legend.position="none") +
@@ -560,15 +644,6 @@ p7 <- ggplot (data = ref_result_RO, mapping = aes (x=Prec, y=mask_area_results),
   geom_abline(slope = 1.075, intercept = -2.322, linetype="dashed", 
               color = "red", linewidth=0.5)
 
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Wright.jpg",plot=p1, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_WrightEucs.jpg",plot=p1.5, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Aus.jpg",plot=p2, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_All.jpg",plot=p3, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Sp.jpg",plot=p4, units = "px", height = 1500, width = 1800, limitsize = FALSE)
 
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Sg.jpg",plot=p5, units = "px", height = 1500, width = 1800, limitsize = FALSE)
@@ -576,14 +651,14 @@ ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Sg
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_G.jpg",plot=p6, units = "px", height = 1500, width = 1800, limitsize = FALSE)
 
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Allphyl.jpg",plot=p7, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
-
 ```
 
-#Climate x Traits
+# Climate x Traits
 ## mask_area_result
-```{r}
-p1 <- ggplot (data = area_results_RO, mapping = aes (x=Temp, y=mask_area_results)) +
+```{r Basic plots between climatic variable x trait 1}
+  # This chunk plots leaf area against the different climatic variables, they have been log10 transformed where appropriate. The line plotted is the slope from Wright et al's SI.
+
+p1 <- ggplot (data = ref_result_RO, mapping = aes (x=Temp, y=mask_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log leaf area (cm2)", x = "Temperature (C)") +
@@ -591,9 +666,9 @@ p1 <- ggplot (data = area_results_RO, mapping = aes (x=Temp, y=mask_area_results
   theme (legend.position="none") +
   scale_y_continuous(trans='log10') +
   geom_abline(slope = 0.043, intercept = 0.207, linetype="dashed", 
-                color = "red", size=0.5)
+                color = "red", linewidth=0.5)
 
-p2 <- ggplot (data = area_results_RO, mapping = aes (x=Prec, y=mask_area_results)) +
+p2 <- ggplot (data = ref_result_RO, mapping = aes (x=Prec, y=mask_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log leaf area (cm2)", x = "Log precipitation (mm yr-1)") +
@@ -602,7 +677,7 @@ p2 <- ggplot (data = area_results_RO, mapping = aes (x=Prec, y=mask_area_results
   scale_x_continuous(trans='log10') + scale_y_continuous(trans='log10') +
   geom_abline(slope = (1.075), intercept = (-2.322), linetype="dashed", color = "red", linewidth=0.5)
 
-p3 <- ggplot (data = area_results_RO, mapping = aes (x=Coldest, y=mask_area_results)) +
+p3 <- ggplot (data = ref_result_RO, mapping = aes (x=Coldest, y=mask_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log leaf area (cm2)") +
@@ -610,7 +685,7 @@ p3 <- ggplot (data = area_results_RO, mapping = aes (x=Coldest, y=mask_area_resu
   theme_bw() +
   theme (legend.position="none") 
 
-p4 <- ggplot (data = area_results_RO, mapping = aes (x=Hottest, y=mask_area_results)) +
+p4 <- ggplot (data = ref_result_RO, mapping = aes (x=Hottest, y=mask_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log leaf area (cm2)") +
@@ -618,7 +693,7 @@ p4 <- ggplot (data = area_results_RO, mapping = aes (x=Hottest, y=mask_area_resu
   theme_bw() +
   theme (legend.position="none")
 
-p5 <- ggplot (data = area_results_RO, mapping = aes (x=Wettest, y=mask_area_results)) +
+p5 <- ggplot (data = ref_result_RO, mapping = aes (x=Wettest, y=mask_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log leaf area (cm2)") +
@@ -626,7 +701,7 @@ p5 <- ggplot (data = area_results_RO, mapping = aes (x=Wettest, y=mask_area_resu
   theme_bw() +
   theme (legend.position="none")
 
-p6 <- ggplot (data = area_results_RO, mapping = aes (x=Driest, y=mask_area_results)) +
+p6 <- ggplot (data = ref_result_RO, mapping = aes (x=Driest, y=mask_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log leaf area (cm2)") +
@@ -635,7 +710,7 @@ p6 <- ggplot (data = area_results_RO, mapping = aes (x=Driest, y=mask_area_resul
   theme (legend.position="none")
 
 #maybe this is better?
-#p6 <- ggplot (data = area_results_RO, mapping = aes (x=Prec, y=log_MAR)) +
+#p6 <- ggplot (data = ref_result_RO, mapping = aes (x=Prec, y=log_MAR)) +
   #geom_boxplot(aes(color=scientificName)) +
   #geom_smooth(method='lm', formula= y~x)
 
@@ -648,9 +723,10 @@ ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/log_MAR_specie
 ```
 
 ## circle_area_results
-```{r}
+```{r Basic plots between climatic variable x trait 2}
+  # This chunk plots area of the largest in-circle against the different climatic variables, they have been log10 transformed where appropriate. The line plotted is the slope from Wright et al's SI.
 
-p1 <- ggplot (data = circle_results_RO, mapping = aes (x=Temp, y=circle_area_results)) +
+p1 <- ggplot (data = ref_result_RO, mapping = aes (x=Temp, y=circle_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log largest in-circle area (cm2)", x = "Temperature (C)") +
@@ -658,7 +734,7 @@ p1 <- ggplot (data = circle_results_RO, mapping = aes (x=Temp, y=circle_area_res
   theme_bw() +
   theme (legend.position="none")
 
-p2 <- ggplot (data = circle_results_RO, mapping = aes (x=Prec, y=circle_area_results)) +
+p2 <- ggplot (data = ref_result_RO, mapping = aes (x=Prec, y=circle_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log largest in-circle area (cm2)", x = "Log precipitation (mm yr-1)") +
@@ -666,7 +742,7 @@ p2 <- ggplot (data = circle_results_RO, mapping = aes (x=Prec, y=circle_area_res
   theme_bw() +
   theme (legend.position="none")
 
-p3 <- ggplot (data = circle_results_RO, mapping = aes (x=Coldest, y=circle_area_results)) +
+p3 <- ggplot (data = ref_result_RO, mapping = aes (x=Coldest, y=circle_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log largest in-circle area") +
@@ -674,7 +750,7 @@ p3 <- ggplot (data = circle_results_RO, mapping = aes (x=Coldest, y=circle_area_
   theme_bw() +
   theme (legend.position="none")
 
-p4 <- ggplot (data = circle_results_RO, mapping = aes (x=Hottest, y=circle_area_results)) +
+p4 <- ggplot (data = ref_result_RO, mapping = aes (x=Hottest, y=circle_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log largest in-circle area") +
@@ -682,7 +758,7 @@ p4 <- ggplot (data = circle_results_RO, mapping = aes (x=Hottest, y=circle_area_
   theme_bw() +
   theme (legend.position="none")
 
-p5 <- ggplot (data = circle_results_RO, mapping = aes (x=Wettest, y=circle_area_results)) +
+p5 <- ggplot (data = ref_result_RO, mapping = aes (x=Wettest, y=circle_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log largest in-circle area") +
@@ -690,7 +766,7 @@ p5 <- ggplot (data = circle_results_RO, mapping = aes (x=Wettest, y=circle_area_
   theme_bw() +
   theme (legend.position="none")
 
-p6 <- ggplot (data = circle_results_RO, mapping = aes (x=Driest, y=circle_area_results)) +
+p6 <- ggplot (data = ref_result_RO, mapping = aes (x=Driest, y=circle_area_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Log largest in-circle area") +
@@ -712,15 +788,17 @@ ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/log_CAR_specie
 ```
 
 ## curvature
-```{r}
-p1 <- ggplot (data = curvature_results_RO, mapping = aes (x=Temp, y=curvature_results)) +
+```{r Basic plots between climatic variable x trait 3}
+  # This chunk plots the curvature ratios against the different climatic variables, they have been log10 transformed where appropriate. The line plotted is the slope from Wright et al's SI.
+
+p1 <- ggplot (data = ref_result_RO, mapping = aes (x=Temp, y=curvature_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Curvature ratio \n(leaf area/convex hull", x = "Temperature (C)") +
   theme_bw() +
   theme (legend.position="none")
 
-p2 <- ggplot (data = curvature_results_RO, mapping = aes (x=Prec, y=curvature_results)) +
+p2 <- ggplot (data = ref_result_RO, mapping = aes (x=Prec, y=curvature_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Curvature ratio \n(leaf area/convex hull", x = "Log precipitation (mm yr-1)") +
@@ -728,28 +806,28 @@ p2 <- ggplot (data = curvature_results_RO, mapping = aes (x=Prec, y=curvature_re
   scale_x_continuous(trans='log10') +
   theme (legend.position="none")
 
-p3 <- ggplot (data = curvature_results_RO, mapping = aes (x=Coldest, y=curvature_results)) +
+p3 <- ggplot (data = ref_result_RO, mapping = aes (x=Coldest, y=curvature_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Curvature ratio \n(leaf area/convex hull") +
   theme_bw() +
   theme (legend.position="none")
 
-p4 <- ggplot (data = curvature_results_RO, mapping = aes (x=Hottest, y=curvature_results)) +
+p4 <- ggplot (data = ref_result_RO, mapping = aes (x=Hottest, y=curvature_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Curvature ratio \n(leaf area/convex hull") +
   theme_bw() +
   theme (legend.position="none")
 
-p5 <- ggplot (data = curvature_results_RO, mapping = aes (x=Wettest, y=curvature_results)) +
+p5 <- ggplot (data = ref_result_RO, mapping = aes (x=Wettest, y=curvature_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Curvature ratio \n(leaf area/convex hull") +
   theme_bw() +
   theme (legend.position="none")
 
-p6 <- ggplot (data = curvature_results_RO, mapping = aes (x=Driest, y=curvature_results)) +
+p6 <- ggplot (data = ref_result_RO, mapping = aes (x=Driest, y=curvature_results)) +
   geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
   geom_smooth(method='lm', formula= y~x) +
   labs(y="Curvature ratio \n(leaf area/convex hull") +
@@ -769,803 +847,16 @@ plot_all <- ggarrange(p1,p2,p3,p4,p5,p6,
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/curvature_species.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
 ```
 
-#Plot_Traits at different phylogeny
-##Overall: mask_area_result 
-```{r warning=FALSE}
+#Inclusivity criterion
+```{r Applying inclusivity criterion}
+  # The application of this is done to remove the error generated from our linear models due to the lacking number of datapoints for some species. The minimum is decided by the absence of an error generated when running the lmer code below
 ref_result_RO_rmspless <- ref_result_RO %>% #How to decide minimum?
   group_by(scientificName) %>% 
   mutate (count=n()) %>% 
-  filter (count>20) %>% 
+  filter (count>15) %>% 
   ungroup ()
 
-p1 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Temp, y=log_MAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  ylim(min(ref_result_RO$log_MAR)-1, max(ref_result_RO$log_MAR)+1) +
-  theme_bw() +
-  theme (legend.position="none") +
-  geom_abline(slope = 0.043, intercept = 0.207, linetype="dashed", 
-              color = "red", size=0.5)
-
-p2 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=log_MAP, y=log_MAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  ylim(min(ref_result_RO$log_MAR)-1, max(ref_result_RO$log_MAR)+1) +
-  theme_bw() +
-  theme (legend.position="none") +
-  geom_abline(slope = 1.075, intercept = -2.322, linetype="dashed", 
-              color = "red", size=0.5)
-
-p3 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Coldest, y=log_MAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  ylim(min(ref_result_RO$log_MAR)-1, max(ref_result_RO$log_MAR)+1) +
-  theme_bw() +
-  theme (legend.position="none") +
-  geom_abline(slope = 0.030, intercept = 0.591, linetype="dashed", 
-              color = "red", size=0.5)
-
-p4 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Hottest, y=log_MAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  ylim(min(ref_result_RO$log_MAR)-1, max(ref_result_RO$log_MAR)+1) +
-  theme_bw() +
-  theme (legend.position="none") +
-  geom_abline(slope = 0.017, intercept = 0.215, linetype="dashed", 
-              color = "red", size=0.5)
-
-p5 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Wettest, y=log_MAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  ylim(min(ref_result_RO$log_MAR)-1, max(ref_result_RO$log_MAR)+1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-#maybe this is better?
-#p6 <- ggplot (data = area_results_RO, mapping = aes (x=Driest, y=log_MAR)) +
-#  geom_boxplot(aes(color=scientificName)) +
-#  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-
-
-plot_all <- ggarrange(p1,p2,p3,p4,p5, 
-          ncol = 2, nrow = 3,  
-          common.legend = TRUE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/allphyl_log_MAR.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
-```
-##Overall: in-circle area
-```{r warning=FALSE}
-p1 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Temp, y=log_CAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log largest in-circle area") +
-  ylim(min(ref_result_RO$log_CAR)-1, max(ref_result_RO$log_CAR)+1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-p2 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=log_MAP, y=log_CAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log largest in-circle area") +
-  ylim(min(ref_result_RO$log_CAR)-1, max(ref_result_RO$log_CAR)+1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-p3 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Coldest, y=log_CAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log largest in-circle area") +
-  ylim(min(ref_result_RO$log_CAR)-1, max(ref_result_RO$log_CAR)+1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-p4 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Hottest, y=log_CAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log largest in-circle area") +
-  ylim(min(ref_result_RO$log_CAR)-1, max(ref_result_RO$log_CAR)+1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-p5 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Wettest, y=log_CAR)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y = "Log largest in-circle area") +
-  ylim(min(ref_result_RO$log_CAR)-1, max(ref_result_RO$log_CAR)+1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-#maybe this is better?
-#p6 <- ggplot (data = area_results_RO, mapping = aes (x=Driest, y=log_CAR)) +
-#  geom_boxplot(aes(color=scientificName)) +
-#  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-
-
-plot_all <- ggarrange(p1,p2,p3,p4,p5, 
-          ncol = 2, nrow = 3,  
-          common.legend = TRUE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/allphyl_log_CAR.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
-```
-
-
-##Overall: curvature 
-```{r warning=FALSE}
-p1 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Temp, y=curvature_results)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  ylim(min(ref_result_RO$curvature_results)*0.9, max(ref_result_RO$curvature_results)*1.1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-p2 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=log_MAP, y=curvature_results)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  ylim(min(ref_result_RO$curvature_results)*0.9, max(ref_result_RO$curvature_results)*1.1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-p3 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Coldest, y=curvature_results)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  ylim(min(ref_result_RO$curvature_results)*0.9, max(ref_result_RO$curvature_results)*1.1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-p4 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Hottest, y=curvature_results)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  ylim(min(ref_result_RO$curvature_results)*0.9, max(ref_result_RO$curvature_results)*1.1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-p5 <- ggplot (data = ref_result_RO_rmspless, mapping = aes (x=Wettest, y=curvature_results)) +
-  geom_jitter(alpha = 0.025, width = 0.1, height = 0.1, size = 0.2) +
-  geom_line(stat="smooth", method='lm', formula= y~x, aes(group = scientificName), color = "coral", size=0.3, alpha = 0.5) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus), color = "cornflowerblue", size=0.5, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, aes(group = genus), color = "darkolivegreen3", size=0.6, se = FALSE) +
-  geom_smooth(method='lm', formula= y~x, color = "darkorchid1", size=0.6, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  ylim(min(ref_result_RO$curvature_results)*0.9, max(ref_result_RO$curvature_results)*1.1) +
-  theme_bw() +
-  theme (legend.position="none")
-
-#maybe this is better?
-#p6 <- ggplot (data = area_results_RO, mapping = aes (x=Driest, y=curvature_results)) +
-#  geom_boxplot(aes(color=scientificName)) +
-#  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-
-
-plot_all <- ggarrange(p1,p2,p3,p4,p5, 
-          ncol = 2, nrow = 3,  
-          common.legend = TRUE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/allphyl_curvature_results.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
-```
-
-## Subgenera: mask_area_result 
-```{r}
-p1 <- ggplot (data = area_results_RO, mapping = aes (x=Temp, y=log_MAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p2 <- ggplot (data = area_results_RO, mapping = aes (x=Prec, y=log_MAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p3 <- ggplot (data = area_results_RO, mapping = aes (x=Coldest, y=log_MAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p4 <- ggplot (data = area_results_RO, mapping = aes (x=Hottest, y=log_MAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p5 <- ggplot (data = area_results_RO, mapping = aes (x=Wettest, y=log_MAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-#maybe this is better?
-#p6 <- ggplot (data = area_results_RO, mapping = aes (x=Driest, y=log_MAR)) +
-#  geom_boxplot(aes(color=scientificName)) +
-#  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-
-
-plot_all <- ggarrange(p1,p2,p3,p4,p5, 
-          ncol = 2, nrow = 3,  
-          common.legend = TRUE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/subgenus_log_MAR.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
-```
-
-## Subgenera: circle_area_results
-```{r}
-
-p1 <- ggplot (data = circle_results_RO, mapping = aes (x=Temp, y=log_CAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p2 <- ggplot (data = circle_results_RO, mapping = aes (x=Prec, y=log_CAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p3 <- ggplot (data = circle_results_RO, mapping = aes (x=Coldest, y=log_CAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p4 <- ggplot (data = circle_results_RO, mapping = aes (x=Hottest, y=log_CAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p5 <- ggplot (data = circle_results_RO, mapping = aes (x=Wettest, y=log_CAR)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-#maybe this is better?
-#p6 <- ggplot (data = circle_results_RO, mapping = aes (x=Driest, y=log_CAR)) +
-#  geom_boxplot(aes(color=scientificName)) +
-#  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-
-
-plot_all <- ggarrange(p1,p2,p3,p4,p5, 
-          ncol = 2, nrow = 3,  
-          common.legend = TRUE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/subgenus_log_CAR.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
-```
-
-## Subgenera: curvature
-```{r}
-p1 <- ggplot (data = curvature_results_RO, mapping = aes (x=Temp, y=curvature_results)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p2 <- ggplot (data = curvature_results_RO, mapping = aes (x=Prec, y=curvature_results)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p3 <- ggplot (data = curvature_results_RO, mapping = aes (x=Coldest, y=curvature_results)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p4 <- ggplot (data = curvature_results_RO, mapping = aes (x=Hottest, y=curvature_results)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p5 <- ggplot (data = curvature_results_RO, mapping = aes (x=Wettest, y=curvature_results)) +
-  geom_jitter(aes(color=Subgenus), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = Subgenus, colour = Subgenus), size=0.5) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-#maybe this is better?
-#p6 <- ggplot (data = curvature_results_RO, mapping = aes (x=Driest, y=curvature_results)) +
-#  geom_boxplot(aes(color=scientificName)) +
-#  geom_smooth(method='lm', formula= y~x)
-
-
-plot_all <- ggarrange(p1,p2,p3,p4,p5, 
-          ncol = 2, nrow = 3,  
-          common.legend = TRUE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/subgenus_curvature.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
-```
-
-## scientificName: mask_area_result 
-```{r}
-p1 <- ggplot (data = area_results_RO, mapping = aes (x=Temp, y=log_MAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2) +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p2 <- ggplot (data = area_results_RO, mapping = aes (x=Prec, y=log_MAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p3 <- ggplot (data = area_results_RO, mapping = aes (x=Coldest, y=log_MAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p4 <- ggplot (data = area_results_RO, mapping = aes (x=Hottest, y=log_MAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p5 <- ggplot (data = area_results_RO, mapping = aes (x=Wettest, y=log_MAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y = "Log leaf area (cm2)") +
-  theme_bw() +
-  theme (legend.position="none")
-
-#maybe this is better?
-#p6 <- ggplot (data = area_results_RO, mapping = aes (x=Driest, y=log_MAR)) +
-#  geom_boxplot(aes(color=scientificName)) +
-#  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-
-
-plot_all <- ggarrange(p1,p2,p3,p4,p5, 
-          ncol = 2, nrow = 3,  
-          common.legend = TRUE, legend = "none")
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/scientificName_log_MAR.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
-```
-
-## scientificName: circle_area_results
-```{r}
-p1 <- ggplot (data = circle_results_RO, mapping = aes (x=Temp, y=log_CAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p2 <- ggplot (data = circle_results_RO, mapping = aes (x=Prec, y=log_CAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p3 <- ggplot (data = circle_results_RO, mapping = aes (x=Coldest, y=log_CAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p4 <- ggplot (data = circle_results_RO, mapping = aes (x=Hottest, y=log_CAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p5 <- ggplot (data = circle_results_RO, mapping = aes (x=Wettest, y=log_CAR)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Log largest in-circle area") +
-  theme_bw() +
-  theme (legend.position="none")
-
-#maybe this is better?
-#p6 <- ggplot (data = circle_results_RO, mapping = aes (x=Driest, y=log_CAR)) +
-#  geom_boxplot(aes(color=scientificName)) +
-#  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-
-
-plot_all <- ggarrange(p1,p2,p3,p4,p5, 
-          ncol = 2, nrow = 3,  
-          common.legend = TRUE, legend = "none")
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/scientificName_log_CAR.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
-```
-
-## scientificName: curvature
-```{r}
-p1 <- ggplot (data = curvature_results_RO, mapping = aes (x=Temp, y=curvature_results)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p2 <- ggplot (data = curvature_results_RO, mapping = aes (x=Prec, y=curvature_results)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p3 <- ggplot (data = curvature_results_RO, mapping = aes (x=Coldest, y=curvature_results)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p4 <- ggplot (data = curvature_results_RO, mapping = aes (x=Hottest, y=curvature_results)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-p5 <- ggplot (data = curvature_results_RO, mapping = aes (x=Wettest, y=curvature_results)) +
-  geom_jitter(aes(color=scientificName), alpha = 0.1, width = 0.1, height = 0.1, size = 0.2)  +
-  geom_smooth(method='lm', formula= y~x, aes(group = scientificName, colour = scientificName), size=0.5, se = FALSE) +
-  labs(y="Curvature ratio \n(leaf area/convex hull") +
-  theme_bw() +
-  theme (legend.position="none")
-
-#maybe this is better?
-#p6 <- ggplot (data = curvature_results_RO, mapping = aes (x=Driest, y=curvature_results)) +
-#  geom_boxplot(aes(color=scientificName)) +
-#  geom_smooth(method='lm', formula= y~x)
-
-
-plot_all <- ggarrange(p1,p2,p3,p4,p5, 
-          ncol = 2, nrow = 3,  
-          common.legend = TRUE, legend = "none")
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/scientificName_curvature.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
-```
-
-#Lm_Traits at different phylogeny
-##Overall
-```{r message=FALSE}
-#Temperature
-lm_all_log_MARxTemp = lm(log_MAR~Temp, data=ref_result_RO)
-#plot(lm_all_log_MARxTemp)
-slope_lm_all_log_MARxTemp <- coef(lm_all_log_MARxTemp)[[2]]
-adjR_lm_all_log_MARxTemp <- summary(lm_all_log_MARxTemp)$adj.r.squared
-p_lm_all_log_MARxTemp <- summary(lm_all_log_MARxTemp)$coefficients[2,4]
-
-lm_all_log_CARxTemp = lm(log_CAR~Temp, data=ref_result_RO)
-#plot(lm_all_log_CARxTemp)
-slope_lm_all_log_CARxTemp <- coef(lm_all_log_CARxTemp)[[2]]
-adjR_lm_all_log_CARxTemp <- summary(lm_all_log_CARxTemp)$adj.r.squared
-p_lm_all_log_CARxTemp <- summary(lm_all_log_CARxTemp)$coefficients[2,4]
-
-lm_all_CRxTemp = lm(curvature_results~Temp, data=ref_result_RO)
-#plot(lm_all_CRxTemp)
-slope_lm_all_CRxTemp <- coef(lm_all_CRxTemp)[[2]]
-adjR_lm_all_CRxTemp <- summary(lm_all_CRxTemp)$adj.r.squared
-p_lm_all_CRxTemp <- summary(lm_all_CRxTemp)$coefficients[2,4]
-
-adjR_all_lm_Temp <- c(adjR_lm_all_log_MARxTemp, adjR_lm_all_log_CARxTemp, adjR_lm_all_CRxTemp)
-p_all_lm_Temp <- c(p_lm_all_log_MARxTemp, p_lm_all_log_CARxTemp, p_lm_all_CRxTemp)
-Temp_level <- c("Temp", "Temp", "Temp")
-
-#Precipitation
-lm_all_log_MARxlog_MAP = lm(log_MAR~log_MAP, data=ref_result_RO)
-#plot(lm_all_log_MARxlog_MAP)
-slope_lm_all_log_MARxlog_MAP <- coef(lm_all_log_MARxlog_MAP)[[2]]
-adjR_lm_all_log_MARxlog_MAP <- summary(lm_all_log_MARxlog_MAP)$adj.r.squared
-p_lm_all_log_MARxlog_MAP <- summary(lm_all_log_MARxlog_MAP)$coefficients[2,4]
-
-lm_all_log_CARxlog_MAP = lm(log_CAR~log_MAP, data=ref_result_RO)
-#plot(lm_all_log_CARxlog_MAP)
-slope_lm_all_log_CARxlog_MAP <- coef(lm_all_log_CARxlog_MAP)[[2]]
-adjR_lm_all_CARxlog_MAP <- summary(lm_all_log_CARxlog_MAP)$adj.r.squared
-p_lm_all_log_CARxlog_MAP <- summary(lm_all_log_CARxlog_MAP)$coefficients[2,4]
-
-lm_all_CRxlog_MAP = lm(curvature_results~log_MAP, data=ref_result_RO)
-#plot(lm_all_CRxlog_MAP)
-slope_lm_all_CRxlog_MAP <- coef(lm_all_CRxlog_MAP)[[2]]
-adjR_lm_all_CRxlog_MAP <- summary(lm_all_CRxlog_MAP)$adj.r.squared
-p_lm_all_CRxlog_MAP <- summary(lm_all_CRxlog_MAP)$coefficients[2,4]
-
-#Coldest
-lm_all_log_MARxColdest = lm(log_MAR~Coldest, data=ref_result_RO)
-#plot(lm_all_log_MARxColdest)
-slope_lm_all_log_MARxColdest <- coef(lm_all_log_MARxColdest)[[2]]
-adjR_lm_all_log_MARxColdest <- summary(lm_all_log_MARxColdest)$adj.r.squared
-p_lm_all_log_MARxColdest <- summary(lm_all_log_MARxColdest)$coefficients[2,4]
-
-lm_all_log_CARxColdest = lm(log_CAR~Coldest, data=ref_result_RO)
-#plot(lm_all_log_CARxColdest)
-slope_lm_all_log_CARxColdest <- coef(lm_all_log_CARxColdest)[[2]]
-adjR_lm_all_CARxColdest <- summary(lm_all_log_CARxColdest)$adj.r.squared
-p_lm_all_log_CARxColdest <- summary(lm_all_log_CARxColdest)$coefficients[2,4]
-
-lm_all_CRxColdest = lm(curvature_results~Coldest, data=ref_result_RO)
-#plot(lm_all_CRxColdest)
-slope_lm_all_CRxColdest <- coef(lm_all_CRxColdest)[[2]]
-adjR_lm_all_CRxColdest <- summary(lm_all_CRxColdest)$adj.r.squared
-p_lm_all_CRxColdest <- summary(lm_all_CRxColdest)$coefficients[2,4]
-
-#Hottest
-lm_all_log_MARxHottest = lm(log_MAR~Hottest, data=ref_result_RO)
-#plot(lm_all_log_MARxHottest)
-slope_lm_all_log_MARxHottest <- coef(lm_all_log_MARxHottest)[[2]]
-adjR_lm_all_log_MARxHottest <- summary(lm_all_log_MARxHottest)$adj.r.squared
-p_lm_all_log_MARxHottest <- summary(lm_all_log_MARxHottest)$coefficients[2,4]
-
-lm_all_log_CARxHottest = lm(log_CAR~Hottest, data=ref_result_RO)
-#plot(lm_all_log_CARxHottest)
-slope_lm_all_log_CARxHottest <- coef(lm_all_log_CARxHottest)[[2]]
-adjR_lm_all_CARxHottest <- summary(lm_all_log_CARxHottest)$adj.r.squared
-p_lm_all_log_CARxHottest <- summary(lm_all_log_CARxHottest)$coefficients[2,4]
-
-lm_all_CRxHottest = lm(curvature_results~Hottest, data=ref_result_RO)
-#plot(lm_all_CRxHottest)
-slope_lm_all_CRxHottest <- coef(lm_all_CRxHottest)[[2]]
-adjR_lm_all_CRxHottest <- summary(lm_all_CRxHottest)$adj.r.squared
-p_lm_all_CRxHottest <- summary(lm_all_CRxHottest)$coefficients[2,4]
-
-#Wettest
-lm_all_log_MARxWettest = lm(log_MAR~Wettest, data=ref_result_RO)
-#plot(lm_all_log_MARxWettest)
-slope_lm_all_log_MARxWettest <- coef(lm_all_log_MARxWettest)[[2]]
-adjR_lm_all_log_MARxWettest <- summary(lm_all_log_MARxWettest)$adj.r.squared
-p_lm_all_log_MARxWettest <- summary(lm_all_log_MARxWettest)$coefficients[2,4]
-
-lm_all_log_CARxWettest = lm(log_CAR~Wettest, data=ref_result_RO)
-#plot(lm_all_log_CARxWettest)
-slope_lm_all_log_CARxWettest <- coef(lm_all_log_CARxWettest)[[2]]
-adjR_lm_all_CARxWettest <- summary(lm_all_log_CARxWettest)$adj.r.squared
-p_lm_all_log_CARxWettest <- summary(lm_all_log_CARxWettest)$coefficients[2,4]
-
-lm_all_CRxWettest = lm(curvature_results~Wettest, data=ref_result_RO)
-#plot(lm_all_CRxWettest)
-slope_lm_all_CRxWettest <- coef(lm_all_CRxWettest)[[2]]
-adjR_lm_all_CRxWettest <- summary(lm_all_CRxWettest)$adj.r.squared
-p_lm_all_CRxWettest <- summary(lm_all_CRxWettest)$coefficients[2,4]
-
-#Driest
-lm_all_log_MARxDriest = lm(log_MAR~Driest, data=ref_result_RO)
-#plot(lm_all_log_MARxDriest)
-slope_lm_all_log_MARxDriest <- coef(lm_all_log_MARxDriest)[[2]]
-adjR_lm_all_log_MARxDriest <- summary(lm_all_log_MARxDriest)$adj.r.squared
-p_lm_all_log_MARxDriest <- summary(lm_all_log_MARxDriest)$coefficients[2,4]
-
-lm_all_log_CARxDriest = lm(log_CAR~Driest, data=ref_result_RO)
-#plot(lm_all_log_CARxDriest)
-slope_lm_all_log_CARxDriest <- coef(lm_all_log_CARxDriest)[[2]]
-adjR_lm_all_CARxDriest <- summary(lm_all_log_CARxDriest)$adj.r.squared
-p_lm_all_log_CARxDriest <- summary(lm_all_log_CARxDriest)$coefficients[2,4]
-```
-###Joining_all
-```{r}
-lm_phyl=NULL
-slope_all_lm_Temp <- c(slope_lm_all_log_MARxTemp, slope_lm_all_log_CARxTemp, slope_lm_all_CRxTemp)
-adjR_all_lm_Temp <- c(adjR_lm_all_log_MARxTemp, adjR_lm_all_log_CARxTemp, adjR_lm_all_CRxTemp)
-p_all_lm_Temp <- c(p_lm_all_log_MARxTemp, p_lm_all_log_CARxTemp, p_lm_all_CRxTemp)
-Temp_level <- c("Temp", "Temp", "Temp")
-measurement <- c("log_MAR", "log_CAR", "curvature")
-
-lm_phyl <- data.frame(cbind(slope_all_lm_Temp, adjR_all_lm_Temp, p_all_lm_Temp, Temp_level, measurement))
-colnames(lm_phyl) <- c("Slope","Adjusted-R", "P-Value", "level", "measurement")
-
-##
-slope_all_lm_log_MAP <- c(slope_lm_all_log_MARxlog_MAP, slope_lm_all_log_CARxlog_MAP, slope_lm_all_CRxlog_MAP)
-adjR_all_lm_log_MAP <- c(adjR_lm_all_log_MARxlog_MAP, adjR_lm_all_CARxlog_MAP, adjR_lm_all_CRxlog_MAP)
-p_all_lm_log_MAP <- c(p_lm_all_log_MARxlog_MAP, p_lm_all_log_CARxlog_MAP, p_lm_all_CRxlog_MAP)
-MAP_level <- c("MAP", "MAP", "MAP")
-
-lm_phyl_MAP <- data.frame(cbind(slope_all_lm_Temp, adjR_all_lm_log_MAP, p_all_lm_log_MAP, MAP_level, measurement))
-colnames(lm_phyl_MAP) <- c("Slope", "Adjusted-R", "P-Value", "level", "measurement")
-
-##
-slope_all_lm_Coldest <- c(slope_lm_all_log_MARxColdest, slope_lm_all_log_CARxColdest, slope_lm_all_CRxColdest)
-adjR_all_lm_Coldest <- c(adjR_lm_all_log_MARxColdest, adjR_lm_all_CARxColdest, adjR_lm_all_CRxColdest)
-p_all_lm_Coldest <- c(p_lm_all_log_MARxColdest, p_lm_all_log_CARxColdest, p_lm_all_CRxColdest)
-Coldest_level <- c("Coldest", "Coldest", "Coldest")
-
-lm_phyl_Coldest <- data.frame(cbind(slope_all_lm_Coldest, adjR_all_lm_Coldest, p_all_lm_Coldest, Coldest_level, measurement))
-colnames(lm_phyl_Coldest)<- c("Slope", "Adjusted-R", "P-Value", "level", "measurement")
-
-##
-slope_all_lm_Hottest <- c(slope_lm_all_log_MARxHottest, slope_lm_all_log_CARxHottest, slope_lm_all_CRxHottest)
-adjR_all_lm_Hottest <- c(adjR_lm_all_log_MARxHottest, adjR_lm_all_CARxHottest, adjR_lm_all_CRxHottest)
-p_all_lm_Hottest <- c(p_lm_all_log_MARxHottest, p_lm_all_log_CARxHottest, p_lm_all_CRxHottest)
-Hottest_level <- c("Hottest", "Hottest", "Hottest")
-
-lm_phyl_Hottest <- data.frame(cbind(slope_all_lm_Hottest, adjR_all_lm_Hottest, p_all_lm_Hottest, Hottest_level, measurement))
-colnames(lm_phyl_Hottest)<- c("Slope", "Adjusted-R", "P-Value", "level", "measurement")
-
-##
-slope_all_lm_Wettest <- c(slope_lm_all_log_MARxWettest, slope_lm_all_log_CARxWettest, slope_lm_all_CRxWettest)
-adjR_all_lm_Wettest <- c(adjR_lm_all_log_MARxWettest, adjR_lm_all_CARxWettest, adjR_lm_all_CRxWettest)
-p_all_lm_Wettest <- c(p_lm_all_log_MARxWettest, p_lm_all_log_CARxWettest, p_lm_all_CRxWettest)
-Wettest_level <- c("Wettest", "Wettest", "Wettest")
-
-lm_phyl_Wettest <- data.frame(cbind(slope_all_lm_Wettest, adjR_all_lm_Wettest, p_all_lm_Wettest, Wettest_level, measurement))
-colnames(lm_phyl_Wettest)<- c("Slope", "Adjusted-R", "P-Value", "level", "measurement")
-
-##
-slope_all_lm_Driest <- c(slope_lm_all_log_MARxDriest, slope_lm_all_log_CARxDriest, slope_lm_all_CRxDriest)
-adjR_all_lm_Driest <- c(adjR_lm_all_log_MARxDriest, adjR_lm_all_CARxDriest, adjR_lm_all_CRxDriest)
-p_all_lm_Driest <- c(p_lm_all_log_MARxDriest, p_lm_all_log_CARxDriest, p_lm_all_CRxDriest)
-Driest_level <- c("Driest", "Driest", "Driest")
-
-lm_phyl_Driest <- data.frame(cbind(slope_all_lm_Driest, adjR_all_lm_Driest, p_all_lm_Driest, Driest_level, measurement))
-colnames(lm_phyl_Driest)<- c("Slope","Adjusted-R", "P-Value", "level", "measurement")
-
-##
-lm_phyl <- rbind(lm_phyl, lm_phyl_MAP, lm_phyl_Coldest,lm_phyl_Hottest, lm_phyl_Wettest, lm_phyl_Driest)
-
-```
-##Species
-```{r}
-#transformations chosen based on QQline and resids
-#lm_log_MARxColdest = lm(log_MAR~Coldest, data=ref_result)
-#summary(lm_log_MARxColdest)
-
-ref_result_sp <- ref_result_RO %>% 
-  dplyr::select(Coldest, Prec, Coldest, Hottest, Wettest, Driest, mask_area_results, log_CAR,log_MAR, curvature_results, scientificName) %>% 
-  group_by(scientificName) %>% 
-  summarise(mean_Coldest = mean(Coldest), mean_Prec = mean(Prec), mean_Coldest = mean(Coldest), mean_Hottest = mean(Hottest), mean_Wettest = mean(Wettest), mean_Driest = mean(Driest), mean_log_CAR = mean(log_CAR), mean_curvature_results = mean(curvature_results), mean_log_MAR = mean(log_MAR)) %>% 
-  ungroup()
-
-lm_sp_log_MARxPrec = lm(mean_log_MAR~log(mean_Prec), data=ref_result_sp)
-#plot(lm_sp_MARxPrec)
-#summary(lm_sp_log_MARxPrec)
-slope_sp_log_MARxPrec <- coef(lm_sp_log_MARxPrec)[[2]]
-
-lm_sp_log_CARxPrec = lm(mean_log_CAR~mean_Prec, data=ref_result_sp)
-#plot(lm_sp_log_CARxPrec)
-#summary(lm_sp_log_CARxPrec)
-slope_sp_log_CARxPrec <- coef(lm_sp_log_CARxPrec)[[2]]
-
-lm_sp_CRxPrec = lm(mean_curvature_results~mean_Prec, data=ref_result_sp)
-#plot(lm_sp_CRxPrec)
-#summary(lm_sp_CRxPrec)
-slope_sp_CRxPrec <- coef(lm_sp_CRxPrec)[[2]]
-```
-
-##Subgenera
-```{r}
-#transformations chosen based on QQline and resids
-#lm_log_MARxColdest = lm(log_MAR~Coldest, data=ref_result)
-#summary(lm_log_MARxColdest)
-
-ref_result_sg <- ref_result_RO %>% 
-  dplyr::select(Coldest, Prec, Coldest, Hottest, Wettest, Driest, mask_area_results, log_CAR, curvature_results, Subgenus, log_MAR) %>% 
-  group_by(Subgenus) %>% 
-  summarise(mean_Coldest = mean(Coldest), mean_Prec = mean(Prec), mean_Coldest = mean(Coldest), mean_Hottest = mean(Hottest), mean_Wettest = mean(Wettest), mean_Driest = mean(Driest), mean_log_CAR = mean(log_CAR), mean_curvature_results = mean(curvature_results), mean_log_MAR = mean(log_MAR)) %>% 
-  ungroup()
-
-lm_sg_log_MARxPrec = lm(mean_log_MAR~log(mean_Prec), data=ref_result_sg)
-#plot(lm_sg_MARxPrec)
-#summary(lm_sg_log_MARxPrec)
-slope_sg_log_MARxPrec <- coef(lm_sg_log_MARxPrec)[[2]]
-
-lm_sg_log_CARxPrec = lm(mean_log_CAR~mean_Prec, data=ref_result_sg)
-#plot(lm_sg_log_CARxPrec)
-#summary(lm_sg_log_CARxPrec)
-slope_sg_log_CARxPrec <- coef(lm_sg_log_CARxPrec)[[2]]
-
-lm_sg_CRxPrec = lm(mean_curvature_results~mean_Prec, data=ref_result_sg)
-#plot(lm_sg_CRxPrec)
-#summary(lm_sg_CRxPrec)
-slope_sg_CRxPrec <- coef(lm_sg_CRxPrec)[[2]]
-```
-
-##Genus
-```{r}
-#transformations chosen based on QQline and resids
-#lm_log_MARxColdest = lm(log_MAR~Coldest, data=ref_result)
-#summary(lm_log_MARxColdest)
-
-ref_result_g <- ref_result_RO %>% 
-  dplyr::select(Coldest, Prec, Coldest, Hottest, Wettest, Driest, mask_area_results, log_CAR, curvature_results, genus, log_MAR) %>% 
-  group_by(genus) %>% 
-  summarise(mean_Coldest = mean(Coldest), mean_Prec = mean(Prec), mean_Coldest = mean(Coldest), mean_Hottest = mean(Hottest), mean_Wettest = mean(Wettest), mean_Driest = mean(Driest), mean_log_CAR = mean(log_CAR), mean_curvature_results = mean(curvature_results), mean_log_MAR = mean(log_MAR)) %>% 
-  ungroup()
-
-lm_g_log_MARxPrec = lm(mean_log_MAR~log(mean_Prec), data=ref_result_g)
-#plot(lm_sg_MARxPrec)
-#summary(lm_sg_log_MARxPrec)
-slope_g_log_MARxPrec <- coef(lm_g_log_MARxPrec)[[2]]
-
-lm_g_log_CARxPrec = lm(mean_log_CAR~mean_Prec, data=ref_result_g)
-#plot(lm_sg_log_CARxPrec)
-#summary(lm_g_log_CARxPrec)
-slope_g_log_CARxPrec <- coef(lm_g_log_CARxPrec)[[2]]
-
-lm_g_CRxPrec = lm(mean_curvature_results~mean_Prec, data=ref_result_g)
-#plot(lm_sg_CRxPrec)
-#summary(lm_sg_CRxPrec)
-slope_g_CRxPrec <- coef(lm_g_CRxPrec)[[2]]
-```
-
-
-##Joining
-```{r}
-all <- c(slope_lm_all_log_MARxlog_MAP, slope_lm_all_log_CARxlog_MAP, slope_lm_all_CRxlog_MAP)
-species <- c(slope_sp_log_MARxPrec, slope_sp_log_CARxPrec, slope_sp_CRxPrec)
-subgenus <-  c(slope_sg_log_MARxPrec, slope_sg_log_CARxPrec, slope_sg_CRxPrec)
-genus <-  c(slope_g_log_MARxPrec, slope_g_log_CARxPrec, slope_g_CRxPrec)
-
-lm_phyl <- data.frame(all, genus, subgenus, species, row.names = c('log_MAR', 'log_CAR', 'CR'))
-
-
+#rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO_rmspless)
 ```
 
 #Glm with random variables
@@ -1575,7 +866,9 @@ Considering that each leaf from each sheet not being independent.
 				1. Making sheet as a random variable
 				2. Making sheet nested within species (which is the random variable)
 				3. Making sheet nested within subgenera
-```{r}
+```{r Glm with random variables}
+  #This is a messy work in progress so Ill just comment it later... But this code uses fixed/random effects to plot slopes and intercepts of each level
+
 rsheet_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id), data=ref_result_RO)
 
 rsheet_glm_df_int <- estimate_grouplevel(rsheet_glm) %>% 
@@ -1592,7 +885,8 @@ plot_all
 
 #Attempt 2
 
-rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO)
+rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO_rmspless)
+rsp_glm
 #Warning: Model failed to converge with max|grad| = 0.0262881 (tol = 0.002, component 1)
 
 rsp_glm_df_int <- estimate_grouplevel(rsp_glm) %>% 
@@ -1624,11 +918,11 @@ slope <- rssg_glm_df_slp[,'Coefficient']
 
 p1 <- ggplot(rssg_glm_df_int, aes(x=Level, y = Coefficient)) + geom_point() + 
   geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5) +
-  labs (title = "rsp_glm_df_int")
+  labs (title = "rssg_glm_df_int")
 
 p2 <- ggplot(rssg_glm_df_slp, aes(x=Level, y = Coefficient)) + geom_point() + 
   geom_hline(yintercept = 1.075, linetype="dashed", color = "green", linewidth=0.5) +
-  labs (title = "rsp_glm_df_slp")
+  labs (title = "rssg _glm_df_slp")
 
 p3 <- ggplot () +
   geom_jitter(data = ref_result_RO, mapping = aes (x=log10(Prec), y=(mask_area_results)), alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
@@ -1680,98 +974,25 @@ ggplot(ref_result_RO,aes(x= log10(Prec), y = log_MAR))+
 
 model_p <- summary(lm(mask_area_results~Prec, data=filtered_result))$coefficients[2,4]
 ```
-#Comparing models
-```{r}
-rsheet_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id), data=ref_result_RO)
-rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO)
-rssg_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id) + (1+log10(Prec)|Subgenus), data=ref_result_RO)
-#boundary (singular) fit: see help('isSingular'). Your model did fit, but it generated that warning because your random effects are very small. 
 
-model_comp <- anova(rsheet_glm, rsp_glm, rssg_glm)
+#Comparing models
+```{r Comparing models}
+  # Running a model comparison of models at different levels of complexities
+
+rssg_glm_1 <- lm(log10(mask_area_results) ~ log10(Prec), data=ref_result_RO_rmspless) 
+rssg_glm_1.5 <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|scientificName),  data=ref_result_RO_rmspless) 
+rssg_glm_2 <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id) + (1|scientificName),  data=ref_result_RO_rmspless) 
+rssg_glm_3 <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id) + (1+log10(Prec)|scientificName), data=ref_result_RO_rmspless) 
+
+model_comp <- anova(rssg_glm_3, rssg_glm_2, rssg_glm_1.5, rssg_glm_1)
+#refitting model(s) with ML (instead of REML)
 model_comp
 ```
 
-#Alternative approach to phylogeny
-```{r warning=FALSE}
-genus_list <- as.list(unique(ref_result_RO$genus))
-
-ref_result_RO_rmsgNA <- ref_result_RO %>% 
-  drop_na(Subgenus)
-
-subgenus_list <- as.list(unique(ref_result_RO_rmsgNA$Subgenus))
-
-ref_result_RO_rmspless <- ref_result_RO %>% #How to decide minimum?
-  group_by(scientificName) %>% 
-  mutate (count=n()) %>% 
-  filter (count>20) %>% 
-  ungroup ()
-
-species_list <- as.list(unique(ref_result_RO_rmspless$scientificName))
-
-
-model_summ_MAR <- NULL
-
-for(genus in genus_list) {
-  level = "genus"
-  filtered_result <- ref_result_RO %>% 
-    filter (genus == genus)
-  obs_num <- nrow(filtered_result)
-  model_slope <- summary(lm(mask_area_results~Prec, data=filtered_result))$coefficients[2]
-  model_p <- summary(lm(mask_area_results~Prec, data=filtered_result))$coefficients[2,4]
-  model_R2 <- summary(lm(mask_area_results~Prec, data=filtered_result))$r.squared
-  model_summ_MAR = rbind(model_summ_MAR, as.data.frame(cbind(level=level,class=genus, observation_number = as.numeric(obs_num), slope = as.numeric(model_slope), p_value=model_p, R_squared=model_R2)))
-}
-
-for(subgenus in subgenus_list) {
-  level = "subgenus"
-  filtered_result <- ref_result_RO %>% 
-    filter (Subgenus == subgenus)
-  obs_num <- nrow(filtered_result)
-  model_slope <- summary(lm(mask_area_results~Prec, data=filtered_result))$coefficients[2,1]
-  model_p <- summary(lm(mask_area_results~Prec, data=filtered_result))$coefficients[2,4]
-  model_R2 <- summary(lm(mask_area_results~Prec, data=filtered_result))$r.squared
-  model_summ_MAR = rbind(model_summ_MAR, as.data.frame(cbind(level=level,class=subgenus, observation_number = as.numeric(obs_num), slope = as.numeric(model_slope), p_value=model_p, R_squared=model_R2)))
-}
-
-for(species in species_list) {
-  level = "species"
-  filtered_result <- ref_result_RO %>%   
-    filter (scientificName == species)
-  if (sd(filtered_result$Prec)==0) {next}
-  obs_num <- nrow(filtered_result)
-  model_slope <- summary(lm(mask_area_results~Prec, data=filtered_result))$coefficients[2,1]
-  model_p <- summary(lm(mask_area_results~Prec, data=filtered_result))$coefficients[2,4]
-  model_R2 <- summary(lm(mask_area_results~Prec, data=filtered_result))$r.squared
-  model_summ_MAR = rbind(model_summ_MAR, as.data.frame(cbind(level=level,class=species, observation_number = as.numeric(obs_num), slope = as.numeric(model_slope), p_value=model_p, R_squared=model_R2)))
-}
-
-model_summ_MAR$observation_number <- as.numeric(model_summ_MAR$observation_number)
-model_summ_MAR$slope <- as.numeric(model_summ_MAR$slope)
-
-Temp <- model_summ_MAR %>% 
-  filter(slope<5 & slope>-5)
-
-
-ggplot(data = Temp, aes(x=level, slope)) +
-  geom_point(alpha = 0.3, aes(color = level), size=1) +
-  geom_hline(yintercept=1.075, linetype="dashed", 
-                color = "red", size=0.6) + 
-  theme_bw() +
-  labs(x="Number of observations", y = "Slope")
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/levels_slopes.jpg", units = "px", height = 1500, width = 1800, limitsize = FALSE)
-```
-
 #Plotting slopes of each species to see convergence
-```{r}
-ref_result_RO_rmspless <- ref_result_RO %>% #How to decide minimum?
-  group_by(scientificName) %>% 
-  mutate (count=n()) %>% 
-  filter (count>20) %>% 
-  ungroup ()
-
+```{r Plotting slopes of each species to see convergence}
+  # This code is similar to above, however carries out a lm from a filtered dataframe. Then from there it creates a data frame a dataframe of the coefficients of the lm at each level. This is repeated for species, subgenera and genus.
 species_list <- as.list(unique(ref_result_RO_rmspless$scientificName))
-
 
 model_summ_MAR <- NULL
 
@@ -1843,25 +1064,25 @@ for(Genus in genus_list) {
   model_slope <- summary(lm(log_MAR~log_MAP, data=filtered_result))$coefficients[2]
   model_p <- summary(lm(log_MAR~log_MAP, data=filtered_result))$coefficients[2,4]
   model_R2 <- summary(lm(log_MAR~log_MAP, data=filtered_result))$r.squared
-  model_summ_MAR = rbind(model_summ_MAR, as.data.frame(cbind(level=level,class=genus, observation_number = as.numeric(obs_num), slope = as.numeric(model_slope), p_value=model_p, R_squared=model_R2)))
+  model_summ_MAR = rbind(model_summ_MAR, as.data.frame(cbind(level=level, class=Genus, observation_number = as.numeric(obs_num), slope = as.numeric(model_slope), p_value=model_p, R_squared=model_R2)))
 }
 
 model_summ_MAR$observation_number <- as.numeric(model_summ_MAR$observation_number)
 model_summ_MAR$slope <- as.numeric(model_summ_MAR$slope)
 
 ggplot(data = model_summ_MAR, aes(y=slope, x=class)) +
-  geom_point(size=2) +
+ geom_point(size=2) +
  geom_hline(yintercept=1.075, linetype="dashed", 
                 color = "red", size=1) + 
   labs(x="Group", y = "Slope", title = "Genus slopes") +
   theme(aspect.ratio = 1, axis.line = element_line(size = 0.7, arrow=arrow(length = unit(0.2,"cm"), type = "closed"))) +
   theme_bw()
-
-
 ```
 
 #Plotting spatial version
-```{r}
+```{r Plotting mean of traits across the spatial extent of Australia}
+  # Creating the spatial object of Australia and plotting the mean traits across it 
+
 country_spdf <- raster::getData(name="GADM", country='AUS', level=2, path=".")
 country_dissolved <- unionSpatialPolygons(SpP=country_spdf, IDs=country_spdf@data$NAME_1)
 country_simplified <- gSimplify(spgeom=country_dissolved, tol=0.1)
@@ -1916,8 +1137,10 @@ plot_all <- ggarrange(p1,p2,p3,
           common.legend = TRUE)
 
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/traits_mean_Aust.jpg",plot=plot_all, units = "px", height = 950, width = 2600, limitsize = FALSE)
+```
 
-#Plotting subgenera across australia
+## Plotting the points across Australia and seeing the distribution of points across the map
+```{r Plots of point distribution across Australia based on subgenera}
 ggplot(ref_result_RO, aes(x=decimalLongitude, y=decimalLatitude)) +
   geom_polygon(data=country_df, aes(x=long, y=lat, group=group), color="darkgrey", fill="white") + 
   geom_point(aes(colour=Subgenus)) + 
@@ -1926,27 +1149,11 @@ ggplot(ref_result_RO, aes(x=decimalLongitude, y=decimalLatitude)) +
   coord_equal(ylim=c(-45, -8), xlim=c(110, 155)) + # This forces the plot extent to cover the whole of Australia
   theme_minimal() +
   facet_wrap(~Subgenus)
-
-#Plotting in tmap with better projections
-obs_map <- tm_shape(states_proj, bbox=extent(c(-2400000, 2000000, -5100000, -900000))) +
-  tm_fill() +
-  tm_borders(lwd=1, col="black") +
-  tm_shape(obs_spdf) +
-  tm_dots(size=0.1, border.lwd=NA, col="mask_area_results", palette="Blues", legend.show = FALSE) +
-  #tm_layout(title="mask_area_results" )+,
-            #title.bg.color="white",
-            #legend.bg.color="white",
-            #legend.format=list(fun=function(x) formatC(x, digits=0, format="d"))) +
-  tm_graticules(col="grey", labels.inside.frame=TRUE,
-                x=c(110, 120, 130, 140, 150),
-                y=c(-40, -30, -20, -10))
-
 ```
 
-
-##Do curvy leaves coexist in the same space as non curvy ones? plotting curvature leaves as a heat map across Australia with 4 bins (0.9.-1.1, 1.1-1.2, 1.2-1.3)
-```{r}
-#Subsetting
+## Asking do curvy leaves coexist in the same space as non curvy ones? 
+```{r Plotting curvature leaves as a heat map across Australia}
+  # Subsetting; Plotting curvature leaves as a heat map across Australia with 4 bins (0.9.-1.1, 1.1-1.2, 1.2-1.3)
 curvature_bin_one <- ref_result_RO %>%
   filter(curvature_results<=1.1)
 curvature_bin_two <- ref_result_RO %>%
@@ -1954,7 +1161,7 @@ curvature_bin_two <- ref_result_RO %>%
 curvature_bin_three <- ref_result_RO %>%
   filter(curvature_results>1.2)
 
-#Plotting
+  # Plotting
 p1 <- ggplot(curvature_bin_one, aes(x=decimalLongitude, y=decimalLatitude)) +
   geom_polygon(data=country_df, aes(x=long, y=lat, group=group), color="darkgrey", fill="white") + 
   stat_summary_2d(aes(z = curvature_results), bins = 70, binwidth=1) + 
@@ -1992,50 +1199,9 @@ ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/curvature_binn
 
 ```
 
-
-#Implementing Akaike Information Criterion (AIC)
-The Akaike information criterion (AIC) is a metric that is used to compare the fit of several regression models.
-It is calculated as:
-
-AIC = 2K – 2ln(L)
-
-where:
-    K: The number of model parameters. The default value of K is 2, so a model with just one predictor variable will have a K value of 2+1 = 3.
-    ln(L): The log-likelihood of the model. Most statistical software can automatically calculate this value for you.
-    
-The AIC is designed to find the model that explains the most variation in the data, while penalizing for models that use an excessive number of parameters.
-
-Here’s how to interpret the output:
-
-    K: The number of parameters in the model.
-    AICc: The AIC value of the model. The lowercase ‘c’ indicates that the AIC has been calculated from the AIC corrected for small sample sizes.
-    Delta_AICc: The difference between the AIC of the best model compared to the current model being compared.
-    AICcWt: The proportion of the total predictive power that can be found in the model.
-    Cum.Wt: The cumulative sum of the AIC weights.
-    LL: The log-likelihood of the model. This tells us how likely the model is, given the data we used
-    
-Consider increasing variables and adding interactions
-
-```{r}
-library(AICcmodavg)
-#Log_MAR
-model_All <- lm(log_MAR~Temp+Prec+Coldest+Hottest+Wettest+Driest, data = ref_result_RO)
-model_TempPrecColdestHottestWettest <- lm(log_MAR~Temp+Prec+Coldest+Hottest+Wettest, data = ref_result_RO)
-model_TempPrecColdestHottest <- lm(log_MAR~Temp+Prec+Coldest+Hottest, data = ref_result_RO)
-model_TempPrecColdest <- lm(log_MAR~Temp+Prec+Coldest, data = ref_result_RO)
-model_TempPrec <- lm(log_MAR~Temp+Prec, data = ref_result_RO)
-model_Temp <- lm(log_MAR~Temp, data = ref_result_RO)
-
-models <- list(model_All, model_TempPrecColdestHottestWettest, model_TempPrecColdestHottest, model_TempPrecColdest, model_TempPrec, model_Temp)
-
-names <- c('model_All', 'model_TempPrecColdestHottestWettest', 'model_TempPrecColdestHottest', 'model_TempPrecColdest', 'model_TempPrec', 'model_Temp')
-
-aictab(cand.set = models, modnames = names)
-
-```
-
 #Phylogenetic tree
-```{r}
+```{r Structuring tree}
+  # Using the phylogenetic tree (ML2) from Andrew Thornhill's analyses. Editing the tip labels to match the scientific names in our database 
 tree_node_dated <- read.tree("~/Uni/Honours/Thesis/Data Analysis or Code/Data/Eucalypts_ML2_dated_r8s.tre")
 tree_node_dated$tip.label <- gsub("_", " ", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub(" CANB", "", tree_node_dated$tip.label)
@@ -2054,18 +1220,24 @@ tree_node_dated$tip.label <- gsub(" [[:digit:]]+", "", tree_node_dated$tip.label
 tree_node_dated$tip.label <- gsub("subsp", "subsp.", tree_node_dated$tip.label)
 tree_node_dated$tip.label <- gsub("'.*-'", "", tree_node_dated$tip.label)
 
-trait_tree <- ref_result_RO %>%
-  filter(ref_result_RO$scientificName %in% tree_node_dated$tip.label) %>% 
-  dplyr::select(scientificName, mask_area_results, circle_area_results, curvature_results) %>% 
+  # Filtering the data set to only have the species that are available in the phylogenetic tree, then finding the mean value of each variable by species
+trait_tree <- ref_result_RO_rmspless %>%
+  filter(ref_result_RO_rmspless$scientificName %in% tree_node_dated$tip.label) %>% 
+  dplyr::select(scientificName, mask_area_results, circle_area_results, curvature_results, Prec) %>% 
   group_by(scientificName) %>% 
-  summarise (mean_logMAR = mean(log(mask_area_results)), mean_logCAR=mean(log(circle_area_results)), meanCR = mean(curvature_results))
-colnames(trait_tree) <- c("tip.label", "mean_logMAR", "mean_logCAR", "mean_CR")
+  summarise (mean_logMAR = mean(log10(mask_area_results)), mean_logCAR=mean(log10(circle_area_results)), meanCR = mean(curvature_results), mean_Prec = mean(log10(Prec)))
+colnames(trait_tree) <- c("tip.label", "mean_logMAR", "mean_logCAR", "mean_CR", "mean_logPrec")
 
+  # Removing the tips of the phylogenetic tree that are not in our data set
 bool_missing_tips <- c(tree_node_dated$tip.label %in% trait_tree$tip.label)
 missing_tips <- tree_node_dated$tip.label[!bool_missing_tips]
 
 tree_node_dated_trim <- drop.tip(tree_node_dated, tip = missing_tips)
+```
 
+##Phylogenetic signal
+```{r Phylogenetic signals}
+# Wrangling the data set as an array, with row names to allow us to find the phylogenetic signal
 mean_logMAR <- as.array(trait_tree$mean_logMAR)
 row.names(mean_logMAR) <- trait_tree$tip.label
 mean_logCAR <- as.array(trait_tree$mean_logCAR)
@@ -2073,6 +1245,10 @@ row.names(mean_logCAR) <- trait_tree$tip.label
 mean_CR <- as.array(trait_tree$mean_CR)
 row.names(mean_CR) <- trait_tree$tip.label
 
+mean_logPrec <- as.array(trait_tree$mean_logPrec)
+row.names(mean_logPrec) <- trait_tree$tip.label
+
+  # Calculating phylogenetic signal from the phytools package
 psignal_logMAR <- phylosig(tree_node_dated_trim,
                       x = mean_logMAR,
                       test = TRUE)
@@ -2083,11 +1259,15 @@ psignal_CR <- phylosig(tree_node_dated_trim,
                       x = mean_CR,
                       test = TRUE)
 
+psignal_Prec <- phylosig(tree_node_dated_trim,
+                      x = mean_logPrec,
+                      test = TRUE)
+
 phylo_res <- cbind(psignal_logMAR, psignal_logCAR, psignal_CR)
 phylo_res
 
 
-#Another method using abouheifs method
+  # Finding phylogenetic signal using another method (Abouheif)
 phylotraits <- phylo4d(tree_node_dated_trim, trait_tree, tip.data=)
 moran.test <- abouheif.moran(phylotraits,method="Abouheif")
 moran.test
@@ -2095,28 +1275,34 @@ plot(moran.test)
 ```
 
 ##Plotting tree node length x traits
-```{r}
+```{r Plotting mean value of species on a phylogeny tree}
 obj_MAR <- contMap(tree_node_dated_trim, mean_logMAR, plot = FALSE, fsize = c(0.05,0.5))
 obj_CAR <- contMap(tree_node_dated_trim, mean_logCAR, plot = FALSE, fsize = c(0.05,0.5))
 obj_CR <- contMap(tree_node_dated_trim, mean_CR, plot = FALSE, fsize = c(0.05,0.5))
+obj_Prec <- contMap(tree_node_dated_trim, mean_logPrec, plot = FALSE, fsize = c(0.05,0.5))
 
-#jpeg(paste0("~/Uni/Honours/Thesis/Data Analysis or Code/Plots/phyltree_MAR.jpg"), width = 1350, height = 5330, unit = "px")
-#plot(obj_MAR)
-#dev.off()
+jpeg(paste0("~/Uni/Honours/Thesis/Data Analysis or Code/phyltree_Prec.jpg"), width = 1350, height = 5330, unit = "px") ;plot(obj_Prec) ;dev.off()
 
 phylo_edgelim <- tree_node_dated_trim %>%
   treeplyr::filter(edge.length<1)
 ```
-##Plotting at divergence times
-```{r}
-divtime_df = NULL
 
-for (i in 712:1254) {
+##Plotting at divergence times
+```{r Plotting at divergence times}
+  # This chunk creates trees at each internal node and filters the results data set with the species in the clade. A lm is then fitted to each filtered data set. The edge length is then calculated at each clade to reflect divergence time.
+
+  # Finding number of internal nodes
+tip_numb <- length(tree_node_dated_trim$tip.label)
+node_numb <- length(tree_node_dated_trim$node.label)
+
+divtime_df = NULL
+for (i in tip_numb:(tip_numb+node_numb)) {
   tryCatch({
-    tmp_tree <- extract.clade(tree_node_dated, i) 
-    tmp_sum_edge <- sum(tmp_tree[["edge.length"]])
-    ref_result_RO$tmp_bool <- ref_result_RO[["scientificName"]] %in% tmp_tree[["tip.label"]]
-    tmp_res <- ref_result_RO %>% 
+    tmp_tree <- extract.clade(tree_node_dated_trim, i) 
+    tmp_sum_edge <- max(node.depth.edgelength(tmp_tree))
+    #tmp_sum_edge <- sum(tmp_tree[["edge.length"]])
+    ref_result_RO_rmspless$tmp_bool <- ref_result_RO_rmspless [["scientificName"]] %in% tmp_tree[["tip.label"]]
+    tmp_res <- ref_result_RO_rmspless %>% 
       filter(tmp_bool == "TRUE")
     tmp_lm <- coef(lm(log10(mask_area_results) ~ log10(Prec), data=tmp_res))
     tmp_slp <- as.numeric(tmp_lm[2])
@@ -2125,21 +1311,19 @@ for (i in 712:1254) {
     }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
   }
 
+  # Plotting the divergence time and slope of each clade
 ggplot(divtime_df, aes(x=sum_edge, y=slope)) +
   geom_point() +
   geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5) +
   theme_bw()
+
+lm(slope~sum_edge, data=divtime_df)
 ```
 
 ##Cutting tree at set intervals and plotting slopes
-```{r}
-remove_tips <- stringr::str_detect(tree_node_dated$tip.label, "Eucalyptus|Angophora|Corymbia")
-missing_tips <- tree_node_dated$tip.label[!remove_tips]
-tree_node_dated <- drop.tip(tree_node_dated, tip = missing_tips)
-
-# refine getting eucalypts
-getMRCA(tree_node_dated, tip=tree_node_dated$tip.label)->eucnode
-tree=extract.clade(tree_node_dated,eucnode)
+```{r Cutting tree at set intervals and plotting slopes}
+eucnode <- getMRCA(tree_node_dated_trim, tip=tree_node_dated_trim$tip.label)
+tree = extract.clade(tree_node_dated, eucnode)
 
 bt_max <- max(branching.times(tree))
 ntax   <- length(tree$tip.label)
@@ -2165,22 +1349,6 @@ for (ii in 1:length(ivals)) {
    tchar <- paste0("T", round(ivals[ii],2))
    colnames(taxout)[ncol(taxout)] <- tchar
 }
-
-
-#write.table(taxout, "~/Delete/cut_taxa.csv",sep=",",row.name=FALSE,col.name=TRUE)
-
-### GLM
-### rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO)
-### rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1|scientificName), data=ref_result_RO)
-
-### 
-###
-### for (i in 1:length(intervals)) {
-###    join taxon & leaf size data objects - ref_result_tax_cut
-###    create a taxon_TXX factor with taxon at cut point called TaxCut
-###    cut_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1|TaxCut), data=ref_result_tax_cut)
-###    add cut_glm to something (a list or a table of coefficients)
-### }
 
 #Creating a boolean T/F for whether the taxa is present at each interval, then joining to main dataframe
 taxa_intervals <- read.csv("~/Delete/cut_taxa.csv") 
@@ -2213,5 +1381,220 @@ melt_phylint <- reshape2::melt(ref_result_phylint, id = c("scientificName", "Coe
 ggplot(melt_phylint, aes(x=variable, y=Coefficient)) +
   geom_point() +
   theme_bw()
-#+geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5)
+# +geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5)
+```
+
+## Applying phylolm
+```{r Applying phylolm}
+  # Using phylolm to carry out a linear model weighted with its phylogeny. It requires the tip labels to be rownames, thus, we have to use the mean (logged) values of the variables in a linear model
+ 
+library(phylolm)
+
+  # Creating the data set with rownames as species names and their mean values
+trait_tree <- ref_result_RO_rmspless %>%
+  filter(ref_result_RO_rmspless$scientificName %in% tree_node_dated$tip.label) %>% 
+  dplyr::select(scientificName, mask_area_results, circle_area_results, curvature_results, Prec) %>% 
+  group_by(scientificName) %>% 
+  summarise (mean_logMAR = mean(log10(mask_area_results)), mean_logCAR=mean(log10(circle_area_results)), meanCR = mean(curvature_results), mean_Prec = mean(log10(Prec))) 
+
+colnames(trait_tree) <- c("tip.label", "mean_logMAR", "mean_logCAR", "mean_CR", "mean_logPrec")
+rownames <- trait_tree$tip.label
+trait_tree <- trait_tree[,-1]
+row.names(trait_tree) <- rownames
+
+rsp_phylolm <- phylolm(mean_logMAR ~ mean_logPrec, phy=tree_node_dated_trim, data=trait_tree)
+rsp_phylolm
+```
+
+#Repeating phylogenetic analysis on all AusTraits
+```{r Repeating phylogenetic analysis on all AusTraits}
+  # Creating the phylogenetic tree of AusTraits species from V.PhyloMaker package + extracting AusTraits data
+library(V.PhyloMaker)
+library(austraits)
+
+austraits <- load_austraits(version = "3.0.2", path = "data/austraits")
+aust_leaf_area <- extract_trait(austraits, "leaf_area")
+aust_species_list <- data.frame(taxon_name = unique(aust_leaf_area$traits$taxon_name))
+aust_species_list_joined <- left_join(aust_species_list, aust_leaf_area$taxa, by = "taxon_name") %>% 
+  dplyr::select(taxon_name, genus, family)
+colnames(aust_species_list_joined) <- c('species', 'genus', 'family')
+
+phylo_tree <- phylo.maker(sp.list = aust_species_list_joined, tree = GBOTB.extended, nodes = nodes.info.1, scenarios="S3")
+phylo_tree$scenario.3$tip.label <- gsub("_", " ", phylo_tree$scenario.3$tip.label)
+
+aust_leaf_area_traits <- aust_leaf_area$trait %>% 
+  dplyr::select(taxon_name, value) %>% 
+  group_by(taxon_name) %>% 
+  summarise(mean_logMAR = mean(log10(value/100))) %>% 
+  ungroup()
+colnames(aust_leaf_area_traits) <- c('tip.label', 'mean_logMAR')
+
+  # Removing missing tips
+bool_missing_tips <- c(phylo_tree$scenario.3$tip.label %in% aust_leaf_area_traits$tip.label )
+missing_tips <- phylo_tree$scenario.3$tip.label[!bool_missing_tips]
+phylo_tree_trim <- drop.tip(phylo_tree$scenario.3, tip = missing_tips)
+
+tmp_mask <- (aust_leaf_area_traits$tip.label %in% phylo_tree_trim$tip.label)
+aust_leaf_area_traits_trim <- data.frame(tip.label = aust_leaf_area_traits$tip.label[c(tmp_mask)])
+aust_leaf_area_traits_trim <- left_join(aust_leaf_area_traits_trim, aust_leaf_area_traits, by ="tip.label")
+
+  # Phylogenetic signal
+mean_logMAR <- as.array(aust_leaf_area_traits_trim$mean_logMAR)
+row.names(mean_logMAR) <- aust_leaf_area_traits_trim$tip.label
+
+psignal_logMAR <- phylosig(phylo_tree_trim,
+                      x = mean_logMAR,
+                      test = TRUE)
+  #Phylogenetic signal K : 0.0251663 ; P-value (based on 1000 randomizations) : 0.001 
+
+  # Plotting tree node length x traits
+obj_MAR <- contMap(phylo_tree$scenario, mean_logMAR, plot = FALSE, fsize = c(0.05,0.5))
+
+jpeg(paste0("~/Uni/Honours/Thesis/Data Analysis or Code/AusT_phyltree_MAR.jpg"), width = 1350, height = 5330, unit = "px"); plot(obj_MAR); dev.off()
+
+
+  # Plotting at divergence times
+  ##Adding site ID to dataset
+aust_leaf_area_traits <- aust_leaf_area$trait %>% 
+  dplyr::select(taxon_name, value, dataset_id, site_name) 
+aust_leaf_area_traits$value <- (aust_leaf_area_traits$value)/100
+
+aust_leaf_area_site <- aust_leaf_area$sites %>% 
+  filter(site_property == "longitude (deg)" | site_property == "latitude (deg)")
+aust_leaf_area_site_wide <- reshape2::dcast(aust_leaf_area_site, dataset_id + site_name ~ site_property)
+
+aust_leaf_area_traits <- inner_join(aust_leaf_area_traits, aust_leaf_area_site_wide, by = c("dataset_id",  "site_name"))
+colnames(aust_leaf_area_traits) <- c('tip.label', 'mask_area_results', "dataset_id",  "site_name", "decimalLatitude", "decimalLongitude")
+aust_leaf_area_traits$decimalLatitude <- as.numeric(aust_leaf_area_traits$decimalLatitude)
+aust_leaf_area_traits$decimalLongitude <- as.numeric(aust_leaf_area_traits$decimalLongitude)
+aust_leaf_area_traits <- aust_leaf_area_traits %>% drop_na()
+
+
+r <- raster::getData("worldclim",var="bio",res=2.5)
+r <- r[[c(1,12,6,5,8,9)]]
+names(r) <- c("Temp","Prec","Coldest","Hottest","Wettest","Driest")
+
+coords <- data.frame(x=aust_leaf_area_traits[["decimalLongitude"]],y=aust_leaf_area_traits[["decimalLatitude"]])
+points <- SpatialPoints(coords, proj4string = r@crs)
+
+values <- raster::extract(r,points)
+aust_leaf_area_traits <- cbind.data.frame(values, aust_leaf_area_traits) %>% 
+  dplyr::filter (!is.na(Temp))
+aust_leaf_area_traits[1] <- aust_leaf_area_traits[1]/10
+aust_leaf_area_traits[3] <- aust_leaf_area_traits[3]/10
+aust_leaf_area_traits[4] <- aust_leaf_area_traits[4]/10
+aust_leaf_area_traits[5] <- aust_leaf_area_traits[5]/10
+aust_leaf_area_traits[6] <- aust_leaf_area_traits[6]/10
+
+aust_leaf_area_traits <- aust_leaf_area_traits %>% 
+  mutate(log_MAP = log10(Prec))
+
+  # Applying inclusivity criterion of n=16 per species
+aust_leaf_area_traits_rmspless <- aust_leaf_area_traits %>% 
+  group_by(tip.label) %>% 
+  mutate (count=n()) %>% 
+  filter (count>16) %>% 
+  ungroup ()
+
+    #rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1+log10(Prec)|tip.label), data=aust_leaf_area_traits_rmspless); this decided n value
+
+  # Removing missing tips of rmspless vers.
+bool_missing_tips <- c(phylo_tree$scenario.3$tip.label %in% unique(aust_leaf_area_traits_rmspless$tip.label))
+missing_tips <- phylo_tree$scenario.3$tip.label[!bool_missing_tips]
+phylo_tree_trim <- drop.tip(phylo_tree$scenario.3, tip = missing_tips)
+
+tmp_mask <- (phylo_tree_trim$tip.label %in% unique(aust_leaf_area_traits_rmspless$tip.label) )
+aust_leaf_area_traits_trim <- data.frame(tip.label = aust_leaf_area_traits_rmspless$tip.label[c(tmp_mask)])
+#aust_leaf_area_traits_trim <- left_join(aust_leaf_area_traits_trim, aust_leaf_area_traits_rmspless, by ="tip.label")
+
+  ##Finding number of internal nodes
+getMRCA(phylo_tree_trim, tip=phylo_tree_trim$tip.label) -> MRCAnode
+
+tip_numb <- length(phylo_tree_trim$tip.label)
+node_numb <- length(phylo_tree_trim$node.label)
+
+divtime_df = NULL
+for (i in tip_numb:(tip_numb+node_numb)) {
+  tryCatch({
+    tmp_tree <- extract.clade(phylo_tree_trim, i) 
+    tmp_sum_edge <- max(node.depth.edgelength(tmp_tree))
+    #tmp_sum_edge <- sum(tmp_tree[["edge.length"]])
+    aust_leaf_area_traits_rmspless$tmp_bool <- aust_leaf_area_traits_rmspless[["tip.label"]] %in% tmp_tree[["tip.label"]]
+    tmp_res <- aust_leaf_area_traits_rmspless %>% 
+      filter(tmp_bool == "TRUE")
+    tmp_lm <- coef(lm(log10(mask_area_results) ~ log10(Prec), data=tmp_res))
+    tmp_slp <- as.numeric(tmp_lm[2])
+    tmp_df <- data.frame(interval = i, sum_edge = tmp_sum_edge, slope = tmp_slp)
+    divtime_df <- as.data.frame(rbind(divtime_df, tmp_df))
+    }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+  }
+
+ggplot(divtime_df, aes(x=sum_edge, y=slope)) +
+  geom_point() +
+  geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5) +
+  theme_bw()
+
+lm(slope~sum_edge, data=divtime_df)
+
+
+  # Cutting at intervals
+bt_max <- max(branching.times(phylo_tree_trim))
+ntax   <- length(phylo_tree_trim$tip.label)
+taxout <- data.frame(T0=phylo_tree_trim$tip.label)
+ 
+intervals <- 20
+ivals     <- seq(from = 1/intervals, to = 1 - 1/intervals, by = 1/intervals) * bt_max
+
+source("~/Uni/Honours/Thesis/Data Analysis or Code/Code/cutPhylo.R")
+
+tree <- phylo_tree_trim
+  ## catches the mapping of old tips to new tips...
+for (ii in 1:length(ivals)) {
+   cat(" Cutting tree at age ", ivals[ii], "\n")
+   ii_tax <- tree$tip.label
+   ii_cut <- cutPhyloTipMap(tree, age=ivals[ii],keep.lineage=TRUE)
+   ii_len_cut <- length(ii_cut$CutClades)
+   for (t in 1:ii_len_cut) {
+      tmptips <- ii_cut$CutClades[[ t ]]$tips
+      ii_tax[ match(tmptips,ii_tax) ] <- paste0("i",ii_cut$CutClades[[ t ]]$newtip)
+   }
+   cat(" Cut complete, processing ... \n")
+   taxout <- cbind(taxout,ii_tax)
+   tchar <- paste0("T", round(ivals[ii],2))
+   colnames(taxout)[ncol(taxout)] <- tchar
+}
+
+write.table(taxout, "~/Delete/cut_taxa.csv",sep=",",row.name=FALSE,col.name=TRUE)
+
+  ## Creating a boolean T/F for whether the taxa is present at each interval, then joining to main dataframe
+taxa_intervals <- read.csv("~/Delete/cut_taxa.csv") 
+intervals <- colnames(taxa_intervals)
+
+sp_list <- taxa_intervals$T0
+
+sp_bool = NULL
+for (interval in intervals){
+  sp_bool <- cbind(sp_bool, taxa_intervals[[interval]] %in% sp_list)
+}
+
+colnames(sp_bool) <- intervals
+sp_bool <- cbind(sp_bool, tip.label = sp_list)
+
+  ##Plotting by species
+rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1+log10(Prec)|tip.label), data=aust_leaf_area_traits_rmspless)
+    #Warning: Model failed to converge with max|grad| = 0.00250193 (tol = 0.002, component 1)
+
+rsp_glm_df_slp <- estimate_grouplevel(rsp_glm) %>% 
+  filter(Group=="tip.label", Parameter == "log10(Prec)") %>% 
+  select(Level, Coefficient)
+colnames(rsp_glm_df_slp) <- c('tip.label', 'Coefficient')
+
+ref_result_phylint <- inner_join(as.data.frame(sp_bool), rsp_glm_df_slp, by = "tip.label")
+
+melt_phylint <- reshape2::melt(ref_result_phylint, id = c("tip.label", "Coefficient")) %>% 
+  filter(value==TRUE)
+
+ggplot(melt_phylint, aes(x=variable, y=Coefficient)) +
+  geom_point() +
+  theme_bw()
 ```
