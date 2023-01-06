@@ -89,19 +89,19 @@ r <- raster::getData("worldclim",var="bio",res=2.5)
 r <- r[[c(1,12,6,5,8,9)]]
 names(r) <- c("Temp","Prec","Coldest","Hottest","Wettest","Driest")
 
-coords <- data.frame(x=ref_result[["decimalLongitude"]],y=ref_result[["decimalLatitude"]])
+coords <- data.frame(x=ref_result_RO[["decimalLongitude"]],y=ref_result_RO[["decimalLatitude"]])
 points <- SpatialPoints(coords, proj4string = r@crs)
 
 values <- raster::extract(r,points)
-ref_result <- cbind.data.frame(values, ref_result) %>% 
+ref_result_RO <- cbind.data.frame(values, ref_result_RO) %>% 
   dplyr::filter (!is.na(Temp))
-ref_result[1] <- ref_result[1]/10
-ref_result[3] <- ref_result[3]/10
-ref_result[4] <- ref_result[4]/10
-ref_result[5] <- ref_result[5]/10
-ref_result[6] <- ref_result[6]/10
+ref_result_RO[1] <- ref_result_RO[1]/10
+ref_result_RO[3] <- ref_result_RO[3]/10
+ref_result_RO[4] <- ref_result_RO[4]/10
+ref_result_RO[5] <- ref_result_RO[5]/10
+ref_result_RO[6] <- ref_result_RO[6]/10
 
-ref_result <- ref_result %>% 
+ref_result_RO <- ref_result_RO %>% 
   mutate(log_MAP = log10(Prec))
 ```
 
@@ -114,7 +114,7 @@ PrecxMar_lm <- lm(log10(mask_area_results) ~ log10(Prec), data=ref_result_RO)
 ref_results_resid <- ref_result_RO
 ref_results_resid$residuals <- PrecxMar_lm$residuals
 
-ggplot (ref_results_resid, aes(x=Prec, y=residuals)) +
+ggplot (ref_results_resid, aes(x=mask_area_results, y=residuals)) +
   geom_point(size=0.5, alpha =0.1) +
   scale_x_continuous(trans='log10') +
   #scale_y_continuous(trans='log10') +
@@ -579,14 +579,6 @@ plot_all<-ggarrange(p1,p1.5,p2,p3,
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Every.jpg",plot=plot_all, units = "px", height = 1000, width = 4200, limitsize = FALSE)
 
 #From Wright's method: Relationships between leaf size, latitude and climate were quantified using linear mixed regression models using the R package [lme4], which fits models based on restricted maximum likelihood. We treated [climate variables as fixed effects], [site as a random effect] (to account for site-to-site variation not explained by climate variables), and [species as a random effect] (because many species occurred multiple times in the database, at different sites). 
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Wright.jpg",plot=p1, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_WrightEucs.jpg",plot=p1.5, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Aus.jpg",plot=p2, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_All.jpg",plot=p3, units = "px", height = 1500, width = 1800, limitsize = FALSE)
 ```
 
 ```{r Plotting at different phylogenetic levels}  
@@ -644,13 +636,11 @@ p7 <- ggplot (data = ref_result_RO, mapping = aes (x=Prec, y=mask_area_results),
   geom_abline(slope = 1.075, intercept = -2.322, linetype="dashed", 
               color = "red", linewidth=0.5)
 
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Sp.jpg",plot=p4, units = "px", height = 1500, width = 1800, limitsize = FALSE)
+plot_all<-ggarrange(p4,p5,p6,p7, 
+          ncol = 4, nrow=1,
+          common.legend = TRUE, legend = "none")
 
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Sg.jpg",plot=p5, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_G.jpg",plot=p6, units = "px", height = 1500, width = 1800, limitsize = FALSE)
-
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Allphyl.jpg",plot=p7, units = "px", height = 1500, width = 1800, limitsize = FALSE)
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Phylo_plot_Every.jpg",plot=plot_all, units = "px", height = 1000, width = 4200, limitsize = FALSE)
 ```
 
 # Climate x Traits
@@ -906,8 +896,7 @@ plot_all <- ggarrange(p1,p2)
 plot_all
 #
 
-rssg_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id) + (1+log10(Prec)|Subgenus), data=ref_result_RO) #I think I need to log Prec/M
-#Warning when not logging: Model failed to converge with max|grad| = 8.45119 (tol = 0.002, component 1)Warning: Model is nearly unidentifiable: very large eigenvalue  - Rescale variables?;Model is nearly unidentifiable: large eigenvalue ratio  - Rescale variables?
+rssg_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id) + (1+log10(Prec)|Subgenus), data=ref_result_RO)
 
 rssg_glm_df_int <- estimate_grouplevel(rssg_glm) %>% 
   filter(Group=="Subgenus", Parameter == "(Intercept)")
@@ -925,7 +914,7 @@ p2 <- ggplot(rssg_glm_df_slp, aes(x=Level, y = Coefficient)) + geom_point() +
   labs (title = "rssg _glm_df_slp")
 
 p3 <- ggplot () +
-  geom_jitter(data = ref_result_RO, mapping = aes (x=log10(Prec), y=(mask_area_results)), alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
+  geom_jitter(data = ref_result_RO, mapping = aes (x=log10(Prec), y=log10(mask_area_results)), alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
   #geom_smooth(method = 'lm', data = ref_result_RO, mapping = aes (x=log10(Prec), y=log10(mask_area_results)), colour = "Brown", linewidth=1) +
   labs(y="Leaf area (cm2)", x = "Mean annual precipitation (mm)") +
   theme_bw() +
@@ -942,7 +931,7 @@ temp <- data.frame(slope = slope, intercepts = intercepts, level = rssg_glm_df_i
 ggplot() +
   geom_jitter(data = ref_result_RO, mapping = aes (x=(Prec), y=(mask_area_results)), alpha = 0.1, width = 0.1, height = 0.1, size = 1) +
   theme_bw() +
-  geom_abline(data = temp, aes(slope=intercepts, intercept=slope, colour = level)) +
+  geom_abline(data = temp, aes(intercept=intercepts, slope=slope, colour = level)) +
   scale_y_continuous(trans='log10') +
   scale_x_continuous(trans='log10')
 
@@ -1263,7 +1252,7 @@ psignal_Prec <- phylosig(tree_node_dated_trim,
                       x = mean_logPrec,
                       test = TRUE)
 
-phylo_res <- cbind(psignal_logMAR, psignal_logCAR, psignal_CR)
+phylo_res <- cbind(psignal_logMAR, psignal_logCAR, psignal_CR, psignal_Prec)
 phylo_res
 
 
@@ -1323,7 +1312,7 @@ lm(slope~sum_edge, data=divtime_df)
 ##Cutting tree at set intervals and plotting slopes
 ```{r Cutting tree at set intervals and plotting slopes}
 eucnode <- getMRCA(tree_node_dated_trim, tip=tree_node_dated_trim$tip.label)
-tree = extract.clade(tree_node_dated, eucnode)
+tree = extract.clade(tree_node_dated_trim, eucnode)
 
 bt_max <- max(branching.times(tree))
 ntax   <- length(tree$tip.label)
@@ -1365,7 +1354,7 @@ colnames(sp_bool) <- intervals
 sp_bool <- cbind(sp_bool, scientificName = sp_list)
 
 #Plotting by species
-rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO)
+rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO_rmspless)
     #Warning: Model failed to converge with max|grad| = 0.0262881 (tol = 0.002, component 1)
 
 rsp_glm_df_slp <- estimate_grouplevel(rsp_glm) %>% 
