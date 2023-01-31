@@ -67,10 +67,13 @@ ref_result <- rbind(rem_result, cleaned_result) %>%
 ref_result <- left_join(ref_result, lookup, by = "scientificName") %>% 
   mutate(log_MAR = log10(mask_area_results), log_CAR = log10(circle_area_results)) %>% replace_na(list(Subgenus = 'Unknown'))
 
-  # Removing outliers using the function identify_outliers from the package rstatix
-ref_result_RO <- subset(ref_result, !log_MAR %in% identify_outliers(ref_result, "log_MAR")$log_MAR)
-ref_result_RO <- subset(ref_result_RO, !log_CAR %in% identify_outliers(ref_result_RO, "log_CAR")$log_CAR)
+  # Removing outliers using the function identify_outliers from the package rstatix, removing results outside of Australia
+ref_result_RO <- subset(ref_result, !mask_area_results %in% identify_outliers(ref_result, "mask_area_results")$mask_area_results)
+ref_result_RO <- subset(ref_result_RO, !circle_area_results %in% identify_outliers(ref_result_RO, "circle_area_results")$circle_area_results)
 ref_result_RO <- subset(ref_result_RO, !curvature_results %in% identify_outliers(ref_result_RO, "curvature_results")$curvature_results)
+ref_result_RO <- ref_result_RO %>% 
+  filter (decimalLatitude > -45, decimalLatitude < -8) %>% 
+  filter (decimalLongitude > 110, decimalLongitude < 155)
 ```
 
 #Loading climate data
@@ -311,72 +314,28 @@ plot_all_2
   # This chunk of code extracts the leaf area measurements of eucalypts from the AusTraits database (v3.0.2). From here using its latitude and longitude of their collection site, their respective climatic variables are appended to create climate x trait plots
 
 library(austraits) 
-austraits <- load_austraits(version = "3.0.2", path = "data/austraits")
+#austraits <- load_austraits(version = "4.0.0", path = "data/austraits")
+austraits <- readRDS("C:/Users/swirl/Downloads/austraits-4.0.0.rds")
 
-Eucs <- extract_taxa(austraits, genus = "Eucalyptus") %>% join_sites()
-Ang <- extract_taxa(austraits, genus = "Angophora") %>% join_sites()
-Cor <- extract_taxa(austraits, genus = "Corymbia") %>% join_sites()
+AusTraits_loc <- austraits$locations %>% 
+  filter (location_property %in% c("latitude (deg)", "longitude (deg)")) %>%
+  filter (!is.na(value)) %>% 
+  filter (value != "" & value != "unknown" & value != "NA") %>% 
+  mutate (num_value = as.numeric(value))
+AusTraits_loc <- reshape2::dcast(AusTraits_loc, formula = dataset_id + location_id + location_name ~ location_property, value.var = 'num_value')
 
-###
-Euc_Trait <- Eucs$traits 
-Euc_Trait_Sub <- Euc_Trait  %>%  
-  filter (trait_name == "leaf_area") %>% 
-  dplyr::select (trait_name, taxon_name, dataset_id, value, "latitude (deg)", 'longitude (deg)') %>% 
-  group_by (trait_name)  %>% 
-  ungroup()
-
-Euc_Trait_Subsplit <- Euc_Trait_Sub  %>% 
-  group_by (dataset_id) %>% split(.$trait_name)
-Euc_Trait_LeafArea <- Euc_Trait_Subsplit[["leaf_area"]] %>% 
-  select (dataset_id, value, "latitude (deg)", 'longitude (deg)', taxon_name) %>% 
-  mutate(leaf_area_cm = value/100)
-colnames(Euc_Trait_LeafArea)[6] <- "mask_area_results"
-
-###
-
-Ang_Trait <- Ang$traits 
-Ang_Trait_Sub <- Ang_Trait  %>%  
-  filter (trait_name == "leaf_area") %>% 
-  dplyr::select (trait_name, taxon_name, dataset_id, value, "latitude (deg)", 'longitude (deg)') %>% 
-  group_by (trait_name)  %>% 
-  ungroup()
-
-Ang_Trait_Subsplit <- Ang_Trait_Sub  %>% 
-  group_by (dataset_id) %>% split(.$trait_name)
-Ang_Trait_LeafArea <- Ang_Trait_Subsplit[["leaf_area"]] %>% 
-  select (dataset_id, value, "latitude (deg)", 'longitude (deg)', taxon_name) %>% 
-  mutate(leaf_area_cm = value/100)
-colnames(Ang_Trait_LeafArea)[6] <- "mask_area_results"
-
-###
-
-Cor_Trait <- Cor$traits 
-Cor_Trait_Sub <- Cor_Trait  %>%  
-  filter (trait_name == "leaf_area") %>% 
-  dplyr::select (trait_name, taxon_name, dataset_id, value, "latitude (deg)", 'longitude (deg)') %>% 
-  group_by (trait_name) %>% 
-  ungroup()
-
-Cor_Trait_Subsplit <- Cor_Trait_Sub  %>% 
-  group_by (dataset_id) %>% split(.$trait_name)
-Cor_Trait_LeafArea <- Cor_Trait_Subsplit[["leaf_area"]] %>% 
-  select (dataset_id, value, "latitude (deg)", 'longitude (deg)', taxon_name) %>% 
-  mutate(leaf_area_cm = value/100)
-colnames(Cor_Trait_LeafArea)[6] <- "mask_area_results"
-
-###
-
-EucalyptsArea <- full_join(Euc_Trait_LeafArea, Ang_Trait_LeafArea)
-EucalyptsArea <- full_join (EucalyptsArea, Cor_Trait_LeafArea)
-colnames(EucalyptsArea)[3] <- "decimalLatitude"
-colnames(EucalyptsArea)[4] <- "decimalLongitude"
-EucalyptsArea$decimalLatitude <- as.numeric(EucalyptsArea$decimalLatitude)
-EucalyptsArea$decimalLongitude <- as.numeric(EucalyptsArea$decimalLongitude)
-
-EucalyptsArea <- na.omit(EucalyptsArea)
+EucalyptsArea <- left_join(AusTraits_loc, austraits$traits) %>%
+  left_join (austraits$taxa) %>%
+  filter (genus %in% c("Eucalyptus","Angophora","Corymbia")) %>%
+  filter (trait_name == "leaf_area") %>%
+  filter (life_stage=="adult" & basis_of_record %in% c("field","literature, field")) %>% 
+  mutate (mask_area_results = as.numeric(value)/100) %>% 
+  dplyr::select (dataset_id, location_id, "longitude (deg)", "latitude (deg)", taxon_name, mask_area_results, life_stage, basis_of_record)
+colnames(EucalyptsArea)[3] <- "decimalLongitude"
+colnames(EucalyptsArea)[4] <- "decimalLatitude"
 
 ## Climate
-coords <- data.frame(x=as.numeric(EucalyptsArea[["decimalLongitude"]]),y=as.numeric(EucalyptsArea[["decimalLatitude"]]))
+coords <- data.frame(x=(EucalyptsArea[["decimalLongitude"]]),y=(EucalyptsArea[["decimalLatitude"]]))
 points <- SpatialPoints(coords, proj4string = r@crs)
 
 values <- raster::extract(r,points)
@@ -392,17 +351,17 @@ EucalyptsArea <- EucalyptsArea %>%
   mutate(log_MAP = log10(Prec))
 
 
-p1 <- ggplot (data = EucalyptsArea, mapping = aes (x=Temp, y=mask_area_results)) +
-  geom_jitter(alpha = 0.1, width = 0.1, height = 0.1, size = 0.5) +
+p1 <- ggplot (data = EucalyptsArea, mapping = aes (x=Prec, y=mask_area_results)) +
+  geom_point(alpha = 0.3, size = 0.6) +
   labs(y="Leaf area (cm2)", x = "Mean annual precipitation (mm)") +
   theme_bw() +
   theme (legend.position="none") +
-  scale_y_continuous(trans='log10', limits = c(0.6,55))  +
-  xlim(0,30) + 
+  scale_y_continuous(trans='log10')  +
+  scale_x_continuous(trans='log10') + 
   geom_abline(slope = 0.043, intercept = 0.207, linetype="dashed", 
               color = "red", linewidth=0.5)
 
-ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Aus.jpg",plot=p1, units = "px", height = 1500, width = 1800, limitsize = FALSE)
+#ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Wright_plot_Aus.jpg",plot=p1, units = "px", height = 1500, width = 1800, limitsize = FALSE)
 ```
 
 ##Comparing DB means v Ours species' mean
@@ -928,22 +887,75 @@ Considering that each leaf from each sheet not being independent.
 ```{r Glm with random variables}
   #This is a messy work in progress so Ill just comment it later... But this code uses fixed/random effects to plot slopes and intercepts of each level
 
-rsheet_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id), data=ref_result_RO)
+#Attempt 3 - plots slopes of each species/sg/g
 
-rsheet_glm_df_int <- estimate_grouplevel(rsheet_glm) %>% 
-  filter(Group=="id", Parameter == "(Intercept)")
+overall_lm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|scientificName/id), 
+                data=ref_result_RO_rmspless)
+summ_slp <- as.numeric(coef(summary(overall_lm))[, "Estimate"][2])
+summ_int <- as.numeric(coef(summary(overall_lm))[, "Estimate"][1])
 
-p1 <- ggplot(rsheet_glm_df_int, aes(x=Level, y = Coefficient)) + geom_point() + 
-  geom_hline(yintercept = -2.322, linetype="dashed", color = "red", linewidth=0.5) +
-  labs (title = "rsp_glm_df_int")
+rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|scientificName), 
+                data=ref_result_RO_rmspless)
+rsp_preds <- estimate_relation(rsp_glm, include_random = TRUE)
+colnames(rsp_preds)[3] <- "mask_area_results"
+rsp_fixed_pred <- estimate_relation(rsp_glm) # This time, include_random is FALSE (default)
 
-p1
+p1 <- ggplot(ribbon = list(alpha = 0)) +
+  #geom_point (data = ref_result_RO_rmspless, aes(x=log10(Prec), y=log10(mask_area_results), color=scientificName), alpha = 0.05) +
+  geom_point (data = rsp_preds, aes(x=Prec, y=mask_area_results, color=scientificName), alpha=0.5) +
+  geom_line (data = rsp_preds, aes(x=Prec, y=mask_area_results, color=scientificName), alpha=0.5) +
+  scale_x_continuous(trans='log10') +
+  #geom_ribbon(data = rsp_preds, aes(x=log10(Prec), ymin = CI_low, ymax = CI_high, color=scientificName), alpha=0.1) +
+  geom_line(data = rsp_fixed_pred, aes(x = Prec, y = Predicted), linetype = 2) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs (title = "Slopes of each species") +
+  geom_abline(slope = summ_slp, intercept = summ_int, color = 'red')
 
-plot_all <- ggarrange(p1,p2)
+  ###
+
+rsg_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|Subgenus), data=ref_result_RO_rmspless)
+rsg_preds <- estimate_relation(rsg_glm, include_random = TRUE)
+colnames(rsg_preds)[3] <- "mask_area_results"
+rsg_fixed_pred <- estimate_relation(rsg_glm) # This time, include_random is FALSE (default)
+
+p2 <- ggplot(ribbon = list(alpha = 0)) +
+  #geom_point (data = ref_result_RO_rmspless, aes(x=(Prec), y=(mask_area_results), color=scientificName), alpha = 0.05) +
+  geom_point (data = rsg_preds, aes(x=(Prec), y=(mask_area_results), color=Subgenus), alpha=0.5) +
+  geom_line (data = rsg_preds, aes(x=(Prec), y=(mask_area_results), color=Subgenus), alpha=0.5) +
+  #geom_ribbon(data = rsg_preds, aes(x=(Prec), ymin = CI_low, ymax = CI_high, color=Subgenus), alpha=0.1) +
+  scale_x_continuous(trans='log10') +
+  geom_line(data = rsg_fixed_pred, aes(x = (Prec), y = (Predicted)), linetype = 2) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs (title = "Slopes of each subgenus") +
+  geom_abline(slope = summ_slp, intercept = summ_int, color = 'red')
+
+  ###
+
+rg_glm <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|genus), data=ref_result_RO_rmspless)
+rg_preds <- estimate_relation(rg_glm, include_random = TRUE)
+colnames(rg_preds)[3] <- "mask_area_results"
+rg_fixed_pred <- estimate_relation(rg_glm) # This time, include_random is FALSE (default)
+
+p3 <- ggplot(ribbon = list(alpha = 0)) +
+  #geom_point (data = ref_result_RO_rmspless, aes(x=log10(Prec), y=log10(mask_area_results), color=scientificName), alpha = 0.05) +
+  geom_point (data = rg_preds, aes(x=Prec, y=mask_area_results, color=genus), alpha=0.5) +
+  geom_line (data = rg_preds, aes(x=Prec, y=mask_area_results, color=genus), alpha=0.5) +
+  scale_x_continuous(trans='log10') +
+  #geom_ribbon(data = rg_preds, aes(x=log10(Prec), ymin = CI_low, ymax = CI_high, color=genus), alpha=0.1) +
+  geom_line(data = rg_fixed_pred, aes(x = Prec, y = Predicted), linetype = 2) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs (title = "Slopes of each genus") +
+  geom_abline(slope = summ_slp, intercept = summ_int, color = 'red')
+
+plot_all <- ggarrange(p1,p2,p3, ncol = 3)
 plot_all
 
-#Attempt 2
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/lmer_slopes_phylo.jpg",plot=plot_all, units = "px", height = 1000, width = 3000, limitsize = FALSE)
 
+#Attempt 2
 rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|id)  + (1+log10(Prec)|scientificName), data=ref_result_RO_rmspless)
 rsp_glm
 #Warning: Model failed to converge with max|grad| = 0.0262881 (tol = 0.002, component 1)
@@ -961,7 +973,7 @@ p2 <- ggplot(rsp_glm_df_slp, aes(x=Level, y = Coefficient)) + geom_point() +
   geom_hline(yintercept = 1.075, linetype="dashed", color = "green", linewidth=0.5) +
   labs (title = "rsp_glm_df_slp")
 
-plot_all <- ggarrange(p1,p2)
+plot_all <- ggarrange(p1,p2,p3, ncol=3)
 plot_all
 #
 
@@ -1034,7 +1046,6 @@ ggplot(ref_result_RO,aes(x= log10(Prec), y = log_MAR))+
 
 model_p <- summary(lm(mask_area_results~Prec, data=filtered_result))$coefficients[2,4]
 ```
-
 #Comparing models
 ```{r Comparing models}
   # Running a model comparison of models at different levels of complexities
@@ -1047,6 +1058,74 @@ rssg_glm_3 <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|id) + (1+log10(Pr
 model_comp <- anova(rssg_glm_3, rssg_glm_2, rssg_glm_1.5, rssg_glm_1)
 #refitting model(s) with ML (instead of REML)
 model_comp
+```
+
+#Table of lm 
+```{r Table of lm}
+  # Getting the overall slope
+lm <- lm(log10(mask_area_results) ~ log10(Prec), data = ref_result_RO_rmspless)
+lm_int <- coef(lm)[[1]]
+lm_slp <- coef(lm)[[2]]
+lm_rsq <- summary(lm)$adj.r.squared
+lm_rse <- summary(lm)$sigma
+lm_res <- cbind(lm_int, lm_slp, lm_rsq, lm_rse)
+
+  # Getting the overall slope when we mean species
+sp_mean <- ref_result_RO_rmspless %>% 
+  group_by (scientificName) %>% 
+  summarise (mean = mean(mask_area_results), mean_Prec = mean(Prec))
+
+ggplot (data = sp_mean, aes(x=mean_Prec, y=mean)) +
+  geom_point () +
+  scale_y_continuous(trans='log10') +
+  scale_x_continuous(trans='log10') +
+  stat_smooth (method = 'lm')
+
+sp_mean_lm <- lm(log10(mean) ~ log10(mean_Prec), data = sp_mean)
+sp_mean_lm_int <- coef(sp_mean_lm)[[1]]
+sp_mean_lm_slp <- coef(sp_mean_lm)[[2]]
+sp_mean_lm_rsq <- summary(sp_mean_lm)$adj.r.squared
+sp_mean_lm_se <- summary(sp_mean_lm)$sigma
+sp_mean_lm_res <- cbind(sp_mean_lm_int, sp_mean_lm_slp, sp_mean_lm_rsq, sp_mean_lm_se)
+  
+  # Getting the slope when including species as a random effect (with sheet id nested within)
+lmer <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|scientificName/id),  data=ref_result_RO_rmspless) 
+lmer_int <- as.numeric(coef(summary(lmer))[, "Estimate"][1])
+lmer_slp <- as.numeric(coef(summary(lmer))[, "Estimate"][2])
+lmer_rsq <- NA
+lmer_se <- NA
+lmer_res <- cbind(lmer_int, lmer_slp, lmer_rsq, lmer_se)
+
+
+  # Getting the slope of AusTrait's Eucs
+aust_lm <- lm(log10(mask_area_results)~log10(Prec), data = EucalyptsArea)
+aust_lm_int <- coef(aust_lm)[[1]]
+aust_lm_slp <- coef(aust_lm)[[2]]
+aust_lm_rsq <- summary(aust_lm)$adj.r.squared
+aust_lm_se <- summary(aust_lm)$sigma
+aust_lm_res <- cbind(aust_lm_int, aust_lm_slp, aust_lm_rsq, aust_lm_se)
+
+  # Getting the slope of Wright's Eucs
+wrights_euc_lm <- lm(log10(mask_area_results)~log10(Prec), data = Wrights_data_eucs)
+wrights_euc_lm_int <- coef(wrights_euc_lm)[[1]]
+wrights_euc_lm_slp <- coef(wrights_euc_lm)[[2]]
+wrights_euc_lm_rsq <- summary(wrights_euc_lm)$adj.r.squared
+wrights_euc_lm_se <- summary(wrights_euc_lm)$sigma
+wrights_euc_lm_res <- cbind(wrights_euc_lm_int, wrights_euc_lm_slp, wrights_euc_lm_rsq, wrights_euc_lm_se)
+
+  # Slope of all of Wright's data points reported in SI
+wrights_all_int <- as.numeric(-2.322)
+wrights_all_slp <- as.numeric(1.075)
+wrights_all_rsq <- as.numeric(0.24)
+wrights_all_se <- as.numeric(0.052)
+wrights_all_res <- cbind(wrights_all_int, wrights_all_slp, wrights_all_rsq, wrights_all_se)
+
+  # Table!
+DB <- c("Overall", "Mean species", "Mixed model", "Austrait's euc'", "Wright's euc'", "Wright's all")
+
+lm_table <- as.data.frame(rbind(lm_res, sp_mean_lm_res, lmer_res, aust_lm_res, wrights_euc_lm_res, wrights_all_res)) 
+lm_table <- cbind (cats, lm_table)
+lm_table
 ```
 
 #Plotting slopes of each species to see convergence
@@ -1140,9 +1219,8 @@ ggplot(data = model_summ_MAR, aes(y=slope, x=class)) +
 ```
 
 #Plotting spatial version
-```{r Plotting mean of traits across the spatial extent of Australia}
-  # Creating the spatial object of Australia and plotting the mean traits across it 
-
+```{r Plotting distribution of points}
+  # Creating the spatial object of Australia
 country_spdf <- raster::getData(name="GADM", country='AUS', level=2, path=".")
 country_dissolved <- unionSpatialPolygons(SpP=country_spdf, IDs=country_spdf@data$NAME_1)
 country_simplified <- gSimplify(spgeom=country_dissolved, tol=0.1)
@@ -1152,7 +1230,7 @@ country_df <- fortify(country_simplified)
 states_proj = spTransform(country_dissolved, CRS("+init=epsg:3112"))
 states_proj = gSimplify(spgeom=states_proj, tol=1000) # tolerance values are in the units of the CRS
 
-#Next we should convert our observations into a spatial object and project them.
+  # Convert observations into a spatial object and project them.
 coords_df <- ref_result_RO[, c("decimalLongitude", "decimalLatitude")]
 coordRef = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 obs_spdf <- SpatialPointsDataFrame(coords=coords_df,
@@ -1160,7 +1238,17 @@ obs_spdf <- SpatialPointsDataFrame(coords=coords_df,
                                    proj4string=coordRef)
 obs_spdf = spTransform(obs_spdf, CRS("+init=epsg:3112"))
 
+p1 <- ggplot (ref_result_RO, aes(x=decimalLongitude, y=decimalLatitude)) +
+  geom_polygon (data=country_df, aes(x=long, y=lat, group=group), color="darkgrey", fill="white") + 
+  geom_point (size = 1, alpha = 0.02, color = "#E69F00") +
+  coord_equal (ylim=c(-45, -8), xlim=c(110, 155)) +
+  theme_minimal ()
+#p1
 
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Aust_point-distrib.jpg",plot=p1, units = "px", height = 1450, width = 1750, limitsize = FALSE)
+```
+
+```{r Plotting mean of traits across the spatial extent of Australia}
 #Plotting log_MAR across australia by mean in grid
 p1 <- ggplot(ref_result_RO, aes(x=decimalLongitude, y=decimalLatitude)) +
   geom_polygon(data=country_df, aes(x=long, y=lat, group=group), color="darkgrey", fill="white") + 
@@ -1443,8 +1531,9 @@ for (interval in intervals) {
 }
 
 order <- loop_coefficient$interval
-ggplot (loop_coefficient, aes(x=interval, y=summ_slp)) +
+ggplot (loop_coefficient, aes(x=interval, y=as.numeric(summ_slp))) +
   geom_point() + 
+  theme_minimal() +
   scale_x_discrete(limits=order)
   
 #Plotting by species - intervals
