@@ -1,0 +1,74 @@
+id,scientificName,mean_ML,mean_Wright,mean_AusTraits,TP,FP,FN,visual_notes
+NSW:NSW:NSW 143464,Angophora floribunda,9.172354222,15.69333333,16.4545,2,0,0,Folded
+NSW:NSW:NSW 143556,Angophora costata,6.282246643,18.5,18.47749123,4,3,3,Juvenile
+NSW:NSW:NSW 143561,Angophora costata,6.282246643,18.5,18.47749123,0,1,1,"Folded, Broken"
+NSW:NSW:NSW 154311,Eucalyptus drummondii subsp. drummondii x macrocarpa,14.04431,NA,NA,2,2,1,
+NSW:NSW:NSW 200470,Eucalyptus quadrans,4.3670591,NA,NA,5,4,0,
+NSW:NSW:NSW 200471,Eucalyptus leptamba -- quadrans,1.89180747,NA,NA,3,5,1,Overlap
+NSW:NSW:NSW 208982,Corymbia pocillum,24.91428,NA,NA,0,1,0,Overlap
+NSW:NSW:NSW 213316,Corymbia latifolia,15.80053,NA,76.57729231,3,1,1,Overlap
+NSW:NSW:NSW 21480,Corymbia grandifolia,18.55565225,NA,123.5625556,0,1,1,"Overlap, Broken"
+NSW:NSW:NSW 215325,Eucalyptus leptophylla,0.909250838,3.06,2.759494737,7,14,21,Overlap
+NSW:NSW:NSW 242006,Corymbia hamersleyana,11.4539465,NA,NA,1,1,2,"Overlap, Broken"
+NSW:NSW:NSW 255514,Angophora costata,6.282246643,18.5,18.47749123,6,0,1,
+NSW:NSW:NSW 256744,Eucalyptus fergusonii,9.212592143,NA,NA,4,3,1,Overlap
+NSW:NSW:NSW 266486,Eucalyptus marginata,10.5554054,24.63,24.6295,4,1,2,
+NSW:NSW:NSW 300848,Eucalyptus tectifica,12.18151286,NA,27.1690375,3,4,,Overlap
+NSW:NSW:NSW 301297,Eucalyptus coolabah subsp. coolabah x intertexta,10.12647575,NA,NA,1,3,3,
+NSW:NSW:NSW 301503,Corymbia arafurica -- bella,8.0660075,NA,NA,2,0,2,"Overlap, Broken"
+NSW:NSW:NSW 301590,Corymbia foelscheana,40.13425778,91,103.9041026,1,0,0,Broken
+NSW:NSW:NSW 301591,Corymbia foelscheana,40.13425778,91,103.9041026,0,0,2,
+301593,Corymbia foelscheana,,,,0,0,0,Overlap
+301597,Corymbia foelscheana,,,,0,0,0,Overlap
+NSW:NSW:NSW 301774,Corymbia kombolgiensis,11.21044,NA,33.28,0,1,0,"Overlap, Broken"
+NSW:NSW:NSW 301922,Corymbia foelscheana,40.13425778,91,103.9041026,2,1,0,Overlap
+NSW:NSW:NSW 301924,Corymbia foelscheana,40.13425778,91,103.9041026,1,2,0,Broken
+NSW:NSW:NSW 301926,Corymbia foelscheana,40.13425778,91,103.9041026,0,1,1,Overlap
+NSW:NSW:NSW 302001,Corymbia trachyphloia,8.483863,NA,12.35269267,2,2,1,Broken
+NSW:NSW:NSW 302444,Corymbia capricornia,5.249143,NA,NA,1,1,3,
+NSW:NSW:NSW 303568,Corymbia gummifera,17.3111974,19.07,21.46686667,0,3,0,Overlap
+NSW:NSW:NSW 303754,Eucalyptus microneura,13.469047,NA,NA,6,3,3,Overlap
+NSW:NSW:NSW 304188,Eucalyptus pantoleuca,52.29962067,NA,53.1264,1,2,0,Overlap
+304192,Eucalyptus pantoleuca,,,,0,0,3,"Overlap, Broken"
+NSW:NSW:NSW 304198,Eucalyptus pantoleuca,52.29962067,NA,53.1264,0,2,0,Broken
+NSW:NSW:NSW 304203,Eucalyptus pantoleuca,52.29962067,NA,53.1264,2,0,1,Overlap
+NSW:NSW:NSW 304203,Eucalyptus pantoleuca,52.29962067,NA,53.1264,1,,,
+NSW:NSW:NSW 304967,Corymbia ferruginea,26.38479,NA,46.99833333,0,2,0,
+NSW:NSW:NSW 305034,Corymbia cadophora,35.25450417,NA,121.859,2,1,0,Overlap
+NSW:NSW:NSW 305040,Corymbia cadophora,35.25450417,NA,121.859,2,0,0,
+305053,Corymbia cadophora,,,,0,0,0,Overlap
+NSW:NSW:NSW 308511,Corymbia dolichocarpa -- plena,10.65077,NA,NA,2,0,1,
+NSW:NSW:NSW 308761,Eucalyptus chloroclada,10.56052833,NA,NA,2,4,0,Overlap
+NSW:NSW:NSW 310328,Corymbia stockeri,16.9811,NA,NA,0,1,2,Overlap
+NSW:NSW:NSW 311893,Eucalyptus ovata,11.0128086,NA,NA,4,1,5,Juvenile
+NSW:NSW:NSW 312005,Corymbia eremaea,6.264802,NA,NA,2,2,0,"Overlap, Broken"
+NSW:NSW:NSW 312015,Corymbia chippendalei,7.91622,NA,9.656666667,2,1,2,Overlap
+NSW:NSW:NSW 312421,Corymbia grandifolia,18.55565225,NA,123.5625556,1,1,1,Overlap
+NSW:NSW:NSW 316385,Eucalyptus nortonii,12.21878782,NA,NA,4,7,6,"Overlap, Juvenile"
+NSW:NSW:NSW 317087,Eucalyptus cinerea,9.188686429,NA,NA,2,5,1,Overlap
+NSW:NSW:NSW 319010,Eucalyptus viminalis,8.516441667,15.49,15.4875,1,2,0,
+NSW:NSW:NSW 319010,Eucalyptus viminalis,8.516441667,15.49,15.4875,1,1,0,
+NSW:NSW:NSW 328914,Eucalyptus melliodora,5.178806615,12.84,10.22214966,5,6,3,
+NSW:NSW:NSW 344498,Eucalyptus campaspe,4.862634,NA,NA,4,4,1,
+NSW:NSW:NSW 352968,Eucalyptus leptocalyx,3.3416499,NA,NA,4,8,1,
+NSW:NSW:NSW 355692,Angophora floribunda,9.172354222,15.69333333,16.4545,6,4,4,
+NSW:NSW:NSW 355715,Angophora leiocarpa,5.546200036,NA,NA,3,4,5,Overlap
+NSW:NSW:NSW 355720,Angophora leiocarpa,5.546200036,NA,NA,4,7,1,Overlap
+NSW:NSW:NSW 355737,Angophora leiocarpa,5.546200036,NA,NA,4,5,2,
+NSW:NSW:NSW 355795,Angophora floribunda,9.172354222,15.69333333,16.4545,9,6,1,
+NSW:NSW:NSW 355830,Angophora melanoxylon,2.514310727,NA,NA,15,10,6,Overlap
+NSW:NSW:NSW 370269,Corymbia cadophora,35.25450417,NA,121.859,3,1,0,
+NSW:NSW:NSW 370638,Corymbia gilbertensis,37.9486,NA,NA,4,2,0,
+NSW:NSW:NSW 370653,Eucalyptus acaciiformis,5.391255379,NA,NA,7,6,6,
+NSW:NSW:NSW 388620,Corymbia ferruginea,26.38479,NA,46.99833333,0,1,0,Broken
+427314,Corymbia grandifolia,,,,0,0,0,Overlap
+455192,Corymbia grandifolia,,,,0,0,0,"Overlap, Broken"
+NSW:NSW:NSW 472753,Eucalyptus pantoleuca,52.29962067,NA,53.1264,2,0,1,Overlap
+NSW:NSW:NSW 473380,Corymbia bleeseri,7.073447667,NA,14.72412,0,3,3,
+NSW:NSW:NSW 500253,Eucalyptus bakeri,4.463361556,NA,NA,9,10,2,
+NSW:NSW:NSW 821182,Corymbia gummifera,17.3111974,19.07,21.46686667,1,1,,Overlap
+NSW:NSW:NSW 824696,Corymbia grandifolia,18.55565225,NA,123.5625556,0,1,0,Broken
+NSW:NSW:NSW 843037,Corymbia intermedia,15.645927,NA,20.7685275,2,2,1,
+923642,Corymbia cadophora,,,,0,0,0,"Overlap, Broken"
+NSW:NSW:NSW 928487,Corymbia cadophora,35.25450417,NA,121.859,2,0,2,
+NSW:NSW:NSW 939607,Eucalyptus odontocarpa,2.44631886,NA,NA,0,5,1,

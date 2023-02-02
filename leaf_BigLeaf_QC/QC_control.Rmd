@@ -1,0 +1,225 @@
+---
+title: "QC control"
+---
+
+```{r Loading libraries, message=FALSE, warning=FALSE}
+library(data.table)
+library(tidyverse)
+library(raster) # Creating spatial plots
+library(geodata) # Retrieving climate data
+library(sp) # Retrieving climate data
+#library(ggfortify)
+library(rstatix) # Used to remove outliers
+library(ggpubr) # Using ggarrange to create graphs
+library(rgdal) 
+library(rgeos) # Creating spatial plots
+library(maptools) # Creating spatial plots
+library(tmap) # Creating spatial plots
+library(ape) # Phylogeny analyses
+library(tidytree) # Phylogeny analyses
+library(phytools) # Phylogeny analyses
+#library(formattable)
+library(phylobase) # Phylogeny analyses
+library(adephylo) # Phylogeny analyses
+library(lme4) # Linear model analyses
+library(treeplyr) # Phylogeny analyses
+library(reshape2) # Data wrangling
+library(stringr) # Data wrangling
+library(modelbased) # Linear model analyses
+```
+
+#Creating results
+```{r Creating results}
+  # Reading in the final results data set along with a table that is used to join a species to their subgenus
+result <- fread("../Data/joined_final_results.csv") 
+#result_uncleaned <- fread("C:/Users/swirl/Downloads/joined_final_results_unclean.csv")
+lookup <- fread("../Data/Lookup_table.csv")
+
+  # Creating a data set that removes leaves that are found to be overlapping as indicated by an identical max_mask_iou. 
+rem_result <- result %>% filter(max_mask_iou<0.7) # Data frame of all leaves with no overlap
+cleaned_result <- result %>% 
+  filter(max_mask_iou>=0.7) # Data frame of leaves with overlap
+mask <- !duplicated(cleaned_result[, 'max_mask_iou']) # Creates a boolean mask of leaves that are duplicated (same max_mask_iou)
+cleaned_result <- cleaned_result[mask, ] # Removing duplicated masks
+
+  # Joining leaves that aren't duplicates, and creating a final data set that includes their species name and subgenera
+ref_result <- rbind(rem_result, cleaned_result) %>% 
+  mutate(scientificName = paste(genus, specificEpithet, sep=" ")) 
+ref_result <- left_join(ref_result, lookup, by = "scientificName") %>% 
+  mutate(log_MAR = log10(mask_area_results), log_CAR = log10(circle_area_results)) %>% replace_na(list(Subgenus = 'Unknown'))
+
+  # Removing outliers using the function identify_outliers from the package rstatix, removing results outside of Australia
+ref_result_RO <- subset(ref_result, !mask_area_results %in% identify_outliers(ref_result, "mask_area_results")$mask_area_results)
+ref_result_RO <- subset(ref_result_RO, !circle_area_results %in% identify_outliers(ref_result_RO, "circle_area_results")$circle_area_results)
+ref_result_RO <- subset(ref_result_RO, !curvature_results %in% identify_outliers(ref_result_RO, "curvature_results")$curvature_results)
+ref_result_RO <- ref_result_RO %>% 
+  filter (decimalLatitude > -45, decimalLatitude < -8) %>% 
+  filter (decimalLongitude > 110, decimalLongitude < 155)
+```
+
+#Removing juvenile leaves + accounting for shrinkage
+#```{r Removing juvenile leaves + accounting for shrinkage}
+ref_result_RO[["mask_area_results"]] <- ref_result_RO[["mask_area_results"]]/0.8
+
+ref_result_RO <- ref_result_RO %>% 
+  group_by (scientificName) %>% 
+  filter (mask_area_results > (min(mask_area_results) + ((max(mask_area_results) - min(mask_area_results))*.15)))
+#```
+
+#Loading climate data
+```{r Loading climate data}
+  # Appending climate data to the data set. This is at a 2.5 minutes resolution and currently appends the variables
+  #' BIO1 = Annual Mean Temperature
+  #' BIO12 = Annual Precipitation
+  #' BIO6 = Min Temperature of Coldest Month
+  #' BIO5 = Max Temperature of Warmest Month
+  #' BIO8 = Mean Temperature of Wettest Quarter
+  #' BIO9 = Mean Temperature of Driest Quarter
+
+r <- raster::getData("worldclim",var="bio",res=2.5)
+r <- r[[c(1,12,6,5,8,9)]]
+names(r) <- c("Temp","Prec","Coldest","Hottest","Wettest","Driest")
+
+coords <- data.frame(x=ref_result_RO[["decimalLongitude"]],y=ref_result_RO[["decimalLatitude"]])
+points <- SpatialPoints(coords, proj4string = r@crs)
+
+values <- raster::extract(r,points)
+ref_result_RO <- cbind.data.frame(values, ref_result_RO) %>% 
+  dplyr::filter (!is.na(Temp))
+ref_result_RO[1] <- ref_result_RO[1]/10
+ref_result_RO[3] <- ref_result_RO[3]/10
+ref_result_RO[4] <- ref_result_RO[4]/10
+ref_result_RO[5] <- ref_result_RO[5]/10
+ref_result_RO[6] <- ref_result_RO[6]/10
+
+ref_result_RO <- ref_result_RO %>% 
+  mutate(log_MAP = log10(Prec))
+```
+
+#Large leaf bias
+```{r Large leaf bias}
+  #Mean x sd by species
+mean_sd <- ref_result_RO_rmspless %>% 
+  group_by (scientificName) %>% 
+  summarise (mean = mean(mask_area_results), sd = sd(mask_area_results))
+
+ggplot (mean_sd, aes(mean, sd)) +
+  geom_point () + stat_smooth () +
+  geom_smooth ( method = 'lm', se=F, colour = "red", linewidth = 0.7) +
+  labs (title = "Plot of mean by sd")
+  
+  #Trait distribution by species
+    #Create a separate plot for each species then save on a pdf
+
+#p.list <- lapply(sort(unique(ref_result_RO_rmspless$scientificName)), function(i) {ggplot(ref_result_RO_rmspless[ref_result_RO_rmspless$scientificName==i,], aes(x=(mask_area_results))) +     geom_histogram(bins = 30) + theme_bw() + facet_wrap(~scientificName)})
+
+library(gridExtra)
+#ggsave(   filename = "~/Uni/Honours/Thesis/Data Analysis or Code/Plots/plots_nolog10.pdf", plot = marrangeGrob(p.list, nrow=1, ncol=1), width = 15, height = 9)
+
+  #Quantile plots by species
+    #Create a separate plot for each species then save on a pdf
+sp_list <- unique(ref_result_RO_rmspless$scientificName)
+
+qqnorm(my_data$len, pch = 1, frame = FALSE)
+
+  #Processing predictions on random sheets
+QC_classres <- read_csv(file="../Data/leaf_BigLeaf_QC/BIGQC_classifier_results_test.csv")
+QC_results <- read_csv(file="../Data/leaf_BigLeaf_QC/BIGQC_joined_final_results.csv")
+QC_results$index <- as.character(QC_results$index)
+QC_results <- QC_results %>% 
+  mutate(scientificName = paste(genus, specificEpithet, sep=" ")) 
+
+QC_classres$filename <- gsub("NSW", "NSW:NSW:NSW ", QC_classres$filename)
+QC_classres$filename <- gsub(".jpg", "", QC_classres$filename)
+QC_classres <- separate(data = QC_classres, col = filename, into = c("id", "index"), sep = "_")
+
+QC_res <- left_join(QC_results, QC_classres)
+
+ggplot(QC_res) +
+  #geom_point(aes(y=decimalLatitude,x=log10(mask_area_results), colour = pr_class)) +
+  geom_boxplot(aes(x=pr_class, y=log10(mask_area_results))) +
+  theme_minimal() +
+  labs(title = "leaf size by classifier prediction class")
+```
+
+```{r Table of big leaf errors}
+    #Table of big leaf errors
+QC_res_tbl <- QC_res %>% 
+  select(id, index, mask_area_results, scientificName)
+#Load AusTraits and Wrights data AusTraits, then repeating chunk Comparing AusTraits/Wright species mean
+
+Wrights_data_full <- read_csv(file="../Data/Wrights_data_v2.csv") 
+colnames(Wrights_data_full)[10] <- "Woody"
+colnames(Wrights_data_full)[14] <- "MAR"
+colnames(Wrights_data_full)[13] <- "Compound"
+
+Wrights_data <- Wrights_data_full %>% 
+  filter (Woody == "woody", Compound == "S") %>% 
+  mutate (source = "Wright") %>% 
+  select (MAR, Latitude, Longitude, MAT, MAP, source, Name_orig)
+colnames (Wrights_data) <- c('MAR', 'decimalLatitude', 'decimalLongitude', 'Temp', 'Prec', 'source', 'scientificName')
+
+Wrights_data_euc <- Wrights_data[grep("^Eucalyptus*", Wrights_data$scientificName), ]
+Wrights_data_ang <- Wrights_data[grep("^Angophora*", Wrights_data$scientificName), ]
+Wrights_data_cor <- Wrights_data[grep("^Corymbia*", Wrights_data$scientificName), ]
+Wrights_data_eucs <- rbind(Wrights_data_euc, Wrights_data_ang, Wrights_data_cor)
+colnames(Wrights_data_eucs)[1] <- "mask_area_results"
+
+  # Getting the average  leaf area for Wright's data, AusTraits data and our data respectively
+Wrights_data_spsumm <- Wrights_data_eucs %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  summarise(mean_Wright=mean(mask_area_results))
+
+EucalyptsArea_spsumm <- EucalyptsArea %>% 
+  ungroup() %>% 
+  group_by(taxon_name) %>% 
+  summarise(mean_AusTraits=mean(mask_area_results))
+colnames(EucalyptsArea_spsumm)[1] <- "scientificName"
+
+QC_res_tbl_spsumm <- QC_res_tbl %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  mutate(mean_ML=mean(mask_area_results))
+
+Spsumm_db <- left_join(QC_res_tbl_spsumm, Wrights_data_spsumm, by ="scientificName")
+Spsumm_db <- left_join(Spsumm_db, EucalyptsArea_spsumm, by ="scientificName")
+
+write.csv(Spsumm_db, file = "../Data/leaf_BigLeaf_QC/BigLeafQC_ML.csv")
+
+tbl_counted <- read_csv("../Data/leaf_BigLeaf_QC/BigLeafQC_ML_counted.csv")
+
+
+  #Plot AusTraits v spsumm MAR
+ggplot(tbl_counted, aes(x=log10(mean_AusTraits), y=log10(mean_ML))) + geom_point() + stat_smooth (method = 'lm', ribbon = F) + geom_abline(slope=1)  +
+  labs(title = "Plot AusTraits v spsumm MAR")
+
+    #Plot boxplot of means grouped by visual notes
+Narm_tbl_counted <- left_join(tbl_counted, QC_res_tbl) %>% 
+  filter(!is.na(mean_ML) & !is.na(visual_notes))
+
+ggplot(Narm_tbl_counted, aes(y=log10(mask_area_results), x = visual_notes)) + 
+  geom_boxplot(position="dodge2") +
+  theme_minimal() +
+  labs(title = "Plot boxplot of means grouped by visual notes")
+
+Narm_tbl_counted_melt <- Narm_tbl_counted %>% select(scientificName, mean_Wright, mean_AusTraits, visual_notes, mask_area_results)
+Narm_tbl_counted_melt <- reshape2::melt(Narm_tbl_counted_melt, id = c("scientificName", "visual_notes"))
+
+ggplot(Narm_tbl_counted_melt, aes(y=log10(value), x = visual_notes, fill=variable)) + 
+  geom_boxplot(position="dodge2") +
+  theme_minimal() +
+  labs(title = "Plot boxplot of means grouped by visual notes (all datasets)")
+    
+    #Plot of missed leaves/total leaves grouped by visual notes
+tbl_counted_total <- tbl_counted %>% 
+  filter (!is.na(FN) & !is.na(visual_notes)) %>% 
+  group_by (visual_notes) %>% 
+  summarise (totalFN = sum(FN), total = sum(TP,FP,FN)) %>% 
+  mutate (proportion = totalFN/total)
+
+ggplot(tbl_counted_total, aes (x=visual_notes, y=proportion)) +
+  geom_col() +
+  theme_minimal() +
+  labs(title = "Plot of missed leaves/total leaves grouped by visual notes")
+```
