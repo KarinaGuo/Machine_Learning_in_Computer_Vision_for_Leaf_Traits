@@ -76,6 +76,15 @@ ref_result_RO <- ref_result_RO %>%
   filter (decimalLongitude > 110, decimalLongitude < 155)
 ```
 
+#Removing juvenile leaves + accounting for shrinkage
+```{r Removing juvenile leaves + accounting for shrinkage}
+ref_result_RO[["mask_area_results"]] <- ref_result_RO[["mask_area_results"]]/0.8
+
+ref_result_RO <- ref_result_RO %>% 
+  group_by (scientificName) %>% 
+  filter (mask_area_results > (min(mask_area_results) + ((max(mask_area_results) - min(mask_area_results))*.15)))
+```
+
 #Loading climate data
 ```{r Loading climate data}
   # Appending climate data to the data set. This is at a 2.5 minutes resolution and currently appends the variables
@@ -188,6 +197,129 @@ curvature_errorsim <- runif(n = as.integer(ceiling(count(ref_result_RO)*0.1)), m
 lat_errorsim <- runif(n = as.integer(ceiling(count(ref_result_RO)*0.1)), min = -43.644444, max = -10.689167)
 long_error <- runif(n = as.integer(ceiling(count(ref_result_RO)*0.1)), min = 113.155000, max = 153.636944)
 
+```
+
+#Large leaf bias
+```{r Large leaf bias}
+  #Mean x sd by species
+mean_sd <- ref_result_RO_rmspless %>% 
+  group_by (scientificName) %>% 
+  summarise (mean = mean(mask_area_results), sd = sd(mask_area_results))
+
+ggplot (mean_sd, aes(mean, sd)) +
+  geom_point () +
+  stat_smooth () +
+  geom_smooth ( method = 'lm', se=F, colour = "red", linewidth = 0.7)
+  
+  #Trait distribution by species
+    #Create a separate plot for each species then save on a pdf
+
+p.list <- lapply(sort(unique(ref_result_RO_rmspless$scientificName)), function(i) {ggplot(ref_result_RO_rmspless[ref_result_RO_rmspless$scientificName==i,], aes(x=(mask_area_results))) +     geom_histogram(bins = 30) + theme_bw() + facet_wrap(~scientificName)})
+
+library(gridExtra)
+ggsave(   filename = "~/Uni/Honours/Thesis/Data Analysis or Code/Plots/plots_nolog10.pdf", plot = marrangeGrob(p.list, nrow=1, ncol=1), width = 15, height = 9)
+
+  #Quantile plots by species
+    #Create a separate plot for each species then save on a pdf
+sp_list <- unique(ref_result_RO_rmspless$scientificName)
+
+qqnorm(my_data$len, pch = 1, frame = FALSE)
+
+  #Processing predictions on random sheets
+QC_classres <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/BIGQC_classifier_results_test.csv")
+QC_results <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/BIGQC_joined_final_results.csv")
+QC_results$index <- as.character(QC_results$index)
+QC_results <- QC_results %>% 
+  mutate(scientificName = paste(genus, specificEpithet, sep=" ")) 
+
+QC_classres$filename <- gsub("NSW", "NSW:NSW:NSW ", QC_classres$filename)
+QC_classres$filename <- gsub(".jpg", "", QC_classres$filename)
+QC_classres <- separate(data = QC_classres, col = filename, into = c("id", "index"), sep = "_")
+
+QC_res <- left_join(QC_results, QC_classres)
+
+ggplot(QC_res) +
+  #geom_point(aes(y=decimalLatitude,x=log10(mask_area_results), colour = pr_class)) +
+  geom_boxplot(aes(x=pr_class, y=log10(mask_area_results))) +
+  theme_minimal()
+```
+
+```{r Table of big leaf errors}
+    #Table of big leaf errors
+QC_res_tbl <- QC_res %>% 
+  select(id, index, mask_area_results, scientificName)
+#Load AusTraits and Wrights data AusTraits, then repeating chunk Comparing AusTraits/Wright species mean
+
+Wrights_data_full <- read_csv(file="~/Delete/Wrights_data_v2.csv") 
+colnames(Wrights_data_full)[10] <- "Woody"
+colnames(Wrights_data_full)[14] <- "MAR"
+colnames(Wrights_data_full)[13] <- "Compound"
+
+Wrights_data <- Wrights_data_full %>% 
+  filter (Woody == "woody", Compound == "S") %>% 
+  mutate (source = "Wright") %>% 
+  select (MAR, Latitude, Longitude, MAT, MAP, source, Name_orig)
+colnames (Wrights_data) <- c('MAR', 'decimalLatitude', 'decimalLongitude', 'Temp', 'Prec', 'source', 'scientificName')
+
+Wrights_data_euc <- Wrights_data[grep("^Eucalyptus*", Wrights_data$scientificName), ]
+Wrights_data_ang <- Wrights_data[grep("^Angophora*", Wrights_data$scientificName), ]
+Wrights_data_cor <- Wrights_data[grep("^Corymbia*", Wrights_data$scientificName), ]
+Wrights_data_eucs <- rbind(Wrights_data_euc, Wrights_data_ang, Wrights_data_cor)
+colnames(Wrights_data_eucs)[1] <- "mask_area_results"
+
+  # Getting the average  leaf area for Wright's data, AusTraits data and our data respectively
+Wrights_data_spsumm <- Wrights_data_eucs %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  summarise(mean_Wright=mean(mask_area_results))
+
+EucalyptsArea_spsumm <- EucalyptsArea %>% 
+  ungroup() %>% 
+  group_by(taxon_name) %>% 
+  summarise(mean_AusTraits=mean(mask_area_results))
+colnames(EucalyptsArea_spsumm)[1] <- "scientificName"
+
+QC_res_tbl_spsumm <- QC_res_tbl %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  mutate(mean_ML=mean(mask_area_results))
+
+Spsumm_db <- left_join(QC_res_tbl_spsumm, Wrights_data_spsumm, by ="scientificName")
+Spsumm_db <- left_join(Spsumm_db, EucalyptsArea_spsumm, by ="scientificName")
+
+write.csv(Spsumm_db, file = "~/Delete/BigLeafQC_ML.csv")
+
+tbl_counted <- read_csv("C:/Users/swirl/OneDrive - UNSW/Honours/Thesis/Machine Learning/leaf_BigLeaf_QC/BigLeafQC_ML_counted.csv")
+
+
+  #Plot AusTraits v spsumm MAR
+ggplot(tbl_counted, aes(x=log10(mean_AusTraits), y=log10(mean_ML))) + geom_point() + stat_smooth (method = 'lm', ribbon = F) + geom_abline(slope=1) 
+
+    #Plot boxplot of means grouped by visual notes
+Narm_tbl_counted <- left_join(tbl_counted, QC_res_tbl) %>% 
+  filter(!is.na(mean_ML) & !is.na(visual_notes))
+
+ggplot(Narm_tbl_counted, aes(y=log10(mask_area_results), x = visual_notes)) + 
+  geom_boxplot(position="dodge2") +
+  theme_minimal()
+
+Narm_tbl_counted_melt <- Narm_tbl_counted %>% select(scientificName, mean_Wright, mean_AusTraits, visual_notes, mask_area_results)
+Narm_tbl_counted_melt <- reshape2::melt(Narm_tbl_counted_melt, id = c("scientificName", "visual_notes"))
+
+ggplot(Narm_tbl_counted_melt, aes(y=log10(value), x = visual_notes, fill=variable)) + 
+  geom_boxplot(position="dodge2") +
+  theme_minimal()
+    
+    #Plot bar of missed leaves/total leaves grouped by visual notes
+tbl_counted_total <- tbl_counted %>% 
+  filter (!is.na(FN) & !is.na(visual_notes)) %>% 
+  group_by (visual_notes) %>% 
+  summarise (totalFN = sum(FN), total = sum(TP,FP,FN)) %>% 
+  mutate (proportion = totalFN/total)
+
+ggplot(tbl_counted_total, aes (x=visual_notes, y=proportion)) +
+  geom_col() +
+  theme_minimal()
 ```
 
 #Comparing leaf area to in circle area
@@ -369,7 +501,12 @@ p1 <- ggplot (data = EucalyptsArea, mapping = aes (x=Prec, y=mask_area_results))
   # Looking into the differences in leaf area by species, recorded in other databases (Wright's and AusTraits)
 
   # Wright's data is available at http://dx.doi.org/10.1126/science.aal4760. Data used were filtered into woody simple leaves.
-Wrights_data_full <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/Wrights_data.csv") 
+#Wrights_data_full <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/Wrights_data.csv") 
+
+Wrights_data_full <- read_csv(file="~/Delete/Wrights_data_v2.csv") 
+colnames(Wrights_data_full)[10] <- "Woody"
+colnames(Wrights_data_full)[14] <- "MAR"
+colnames(Wrights_data_full)[13] <- "Compound"
 
 Wrights_data <- Wrights_data_full %>% 
   filter (Woody == "woody", Compound == "S") %>% 
@@ -433,18 +570,18 @@ ggplot(comb_mean, aes(x=diff_normalised, y=..density..)) +
 Wrights_data_spsumm <- Wrights_data_eucs %>% 
   ungroup() %>% 
   group_by(scientificName) %>% 
-  summarise(mean_Wright=mean(mask_area_results))
+  summarise(mean_Wright=mean(log10(mask_area_results)))
 
 EucalyptsArea_spsumm <- EucalyptsArea %>% 
   ungroup() %>% 
   group_by(taxon_name) %>% 
-  summarise(mean_AusTraits=mean(mask_area_results))
+  summarise(mean_AusTraits=mean(log10(mask_area_results)))
 colnames(EucalyptsArea_spsumm)[1] <- "scientificName"
 
 ref_result_RO_spsumm <- ref_result_RO %>% 
   ungroup() %>% 
   group_by(scientificName) %>% 
-  summarise(mean_ML=mean(mask_area_results))
+  summarise(mean_ML=mean(log10(mask_area_results)))
 
 Wright_Aust <- inner_join(Wrights_data_spsumm, EucalyptsArea_spsumm, by ="scientificName")
 Wright_Ours <- inner_join(Wrights_data_spsumm, ref_result_RO_spsumm, by ="scientificName")
@@ -875,6 +1012,32 @@ plot_all <- ggarrange(p1,p2,p3,p4,p5,p6,
           common.legend = TRUE, legend = "none")
 
 ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/curvature_species.jpg",plot=plot_all, units = "px", height = 2100, width = 2300, limitsize = FALSE)
+```
+
+#Prec x Temp 3d interaction plot
+```{r 3D interaction plot}
+library(car)
+library(rgl)
+library(plot3D)
+library(magick)
+scatter3d(x=log10(ref_result_RO$Prec), y=log10(ref_result_RO$mask_area_results), z=ref_result_RO$Temp, 
+          fit = "smooth", residuals = FALSE, alpha.col = 0.2, point.col="black", ticktype = "detailed",
+          surface.col = ramp.col(c("darkred", "khaki", "darkolivegreen")),
+          xlab="Log mean annual precipitation", ylab = "Log leaf area size", zlab="Mean annual temperature (oC)")
+
+# We can indicate the axis and the rotation velocity
+play3d( spin3d( axis = c(0, 1, 0), rpm = 3), duration = 10)
+
+# Save like gif
+movie3d(
+  movie="3dAnimatedScatterplot", 
+  spin3d( axis = c(0, 1, 0), rpm = 3),
+  duration = 10, 
+  dir = "~/Uni/Honours/Thesis/Data Analysis or Code/Plots/gif",
+  type = "gif", 
+  clean = TRUE,
+  webshot = FALSE
+)
 ```
 
 #Glm with random variables
