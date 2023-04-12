@@ -1,0 +1,1123 @@
+```{r Loading libraries, message=FALSE, warning=FALSE}
+library(data.table)
+library(tidyverse)
+library(raster) # Creating spatial plots
+library(geodata) # Retrieving climate data
+library(sp) # Retrieving climate data
+#library(ggfortify)
+#library(rstatix) # Used to remove outliers
+library(ggpubr) # Using ggarrange to create graphs
+library(rgdal) 
+library(rgeos) # Creating spatial plots
+library(maptools) # Creating spatial plots
+library(tmap) # Creating spatial plots
+library(ape) # Phylogeny analyses
+library(tidytree) # Phylogeny analyses
+library(phytools) # Phylogeny analyses
+#library(formattable)
+library(phylobase) # Phylogeny analyses
+library(adephylo) # Phylogeny analyses
+library(lme4) # Linear model analyses
+library(treeplyr) # Phylogeny analyses
+library(reshape2) # Data wrangling
+library(stringr) # Data wrangling
+library(modelbased) # Linear model analyses
+library(CoordinateCleaner) # Removing non Australia datapoints
+library(quantreg) # Performing quantile regression
+library(patchwork) # Creating graphs
+```
+
+#Creating results
+```{r Creating results}
+  # Reading in the final results data set along with a table that is used to join a species to their subgenus
+result <- fread("~/Uni/Honours/Thesis/Data Analysis or Code/Data/joined_final_results.csv") 
+#result_uncleaned <- fread("C:/Users/swirl/Downloads/joined_final_results_unclean.csv")
+lookup <- fread("~/Uni/Honours/Thesis/Data Analysis or Code/Lookup_table.csv")
+
+  # Creating a data set that removes leaves that are found to be overlapping as indicated by an identical max_mask_iou. 
+rem_result <- result %>% filter(max_mask_iou<0.7) # Data frame of all leaves with no overlap
+cleaned_result <- result %>% 
+  filter(max_mask_iou>=0.7) # Data frame of leaves with overlap
+mask <- !duplicated(cleaned_result[, 'max_mask_iou']) # Creates a boolean mask of leaves that are duplicated (same max_mask_iou)
+cleaned_result <- cleaned_result[mask, ] # Removing duplicated masks
+
+  # Joining leaves that aren't duplicates, and creating a final data set that includes their species name and subgenera
+ref_result <- rbind(rem_result, cleaned_result) %>% 
+  mutate(scientificName = paste(genus, specificEpithet, sep=" ")) 
+ref_result <- left_join(ref_result, lookup, by = "scientificName") %>% 
+  mutate(log_MAR = log10(mask_area_results), log_CAR = log10(circle_area_results)) %>% replace_na(list(Subgenus = 'Unknown')) %>% 
+  mutate(countrycode = "AUS")
+
+  #Using the function identify_outliers from the package rstatix,
+#ref_result_RO <- subset(ref_result, !mask_area_results %in% identify_outliers(ref_result, "mask_area_results")$mask_area_results)
+#ref_result_RO <- subset(ref_result_RO, !circle_area_results %in% identify_outliers(ref_result_RO, "circle_area_results")$circle_area_results)
+#ref_result_RO <- subset(ref_result_RO, !curvature_results %in% identify_outliers(ref_result_RO, "curvature_results")$curvature_results)
+
+  # Removing results outside of Australia
+ref_result_RO <- cc_coun(ref_result, lon = "decimalLongitude", lat = "decimalLatitude")
+```
+
+#Removing juvenile leaves + accounting for shrinkage + removing large leaves
+```{r Removing juvenile leaves + accounting for shrinkage}
+ref_result_RO[["mask_area_results"]] <- ref_result_RO[["mask_area_results"]]/0.8973
+
+
+  # Code used to remove bottom 50% of each species. Used when the analysis is to be repeated for those who want to replicate physiologists sampling methods
+#ref_result_RO <- ref_result_RO %>% group_by (scientificName) %>%  filter (mask_area_results > (min(mask_area_results) + ((max(mask_area_results) - min(mask_area_results))*.50)))
+
+```
+
+#Loading climate data
+```{r Loading climate data}
+  # Appending climate data to the data set. This is at a 0.5 minutes resolution and currently appends the variables
+  #' BIO1 = Annual Mean Temperature
+  #' BIO12 = Annual Precipitation
+  #' BIO6 = Min Temperature of Coldest Month
+  #' BIO5 = Max Temperature of Warmest Month
+  #' BIO8 = Mean Temperature of Wettest Quarter
+  #' BIO9 = Mean Temperature of Driest Quarter
+
+r <- raster::getData("worldclim",var="bio",res=2.5)
+r <- r[[c(1,12,6,5,8,9)]]
+names(r) <- c("Temp","Prec","Coldest","Hottest","Wettest","Driest")
+
+coords <- data.frame(x=ref_result_RO[["decimalLongitude"]],y=ref_result_RO[["decimalLatitude"]])
+points <- SpatialPoints(coords, proj4string = r@crs)
+
+values <- raster::extract(r,points)
+ref_result_RO <- cbind.data.frame(values, ref_result_RO) %>% 
+  dplyr::filter (!is.na(Temp))
+ref_result_RO[1] <- ref_result_RO[1]/10
+ref_result_RO[3] <- ref_result_RO[3]/10
+ref_result_RO[4] <- ref_result_RO[4]/10
+ref_result_RO[5] <- ref_result_RO[5]/10
+ref_result_RO[6] <- ref_result_RO[6]/10
+
+ref_result_RO <- ref_result_RO %>% 
+  mutate(log_MAP = log10(Prec))
+```
+
+#Inclusivity criterion
+```{r Applying inclusivity criterion}
+  # The application of this is done to remove the error generated from our linear models due to the lacking number of datapoints for some species. The minimum is decided by the absence of an error generated when running the lmer code below
+ref_result_RO_rmspless <- ref_result_RO %>% #How to decide minimum?
+  group_by(scientificName) %>% 
+  mutate (count=n()) %>% 
+  filter (count>10) %>% 
+  ungroup ()
+
+rsp_glm <- lmer(log10(mask_area_results) ~ log10(Prec) +  (1|scientificName/id), data=ref_result_RO_rmspless)
+```
+
+#AusTraits & Wright et al.'s (2017)
+```{r Generating AusTraits data}
+  # This chunk of code extracts the leaf area measurements of eucalypts from the AusTraits database (v4.0.0). From here using its latitude and longitude of their collection site, their respective climatic variables are appended
+
+#austraits <- load_austraits(version = "4.0.0", path = "data/austraits")
+austraits <- readRDS("C:/Users/swirl/Downloads/austraits-4.0.0.rds")
+
+AusTraits_loc <- austraits$locations %>% 
+  filter (location_property %in% c("latitude (deg)", "longitude (deg)")) %>%
+  filter (!is.na(value)) %>% 
+  filter (value != "" & value != "unknown" & value != "NA") %>% 
+  mutate (num_value = as.numeric(value))
+AusTraits_loc <- reshape2::dcast(AusTraits_loc, formula = dataset_id + location_id + location_name ~ location_property, value.var = 'num_value')
+
+EucalyptsArea <- left_join(AusTraits_loc, austraits$traits) %>%
+  left_join (austraits$taxa) %>%
+  filter (genus %in% c("Eucalyptus","Angophora","Corymbia")) %>%
+  filter (trait_name == "leaf_area") %>%
+  filter (life_stage=="adult" & basis_of_record %in% c("field","literature, field")) %>% 
+  mutate (mask_area_results = as.numeric(value)/100) %>% 
+  dplyr::select (dataset_id, location_id, "longitude (deg)", "latitude (deg)", taxon_name, mask_area_results, life_stage, basis_of_record)
+colnames(EucalyptsArea)[3] <- "decimalLongitude"
+colnames(EucalyptsArea)[4] <- "decimalLatitude"
+
+## Climate
+coords <- data.frame(x=(EucalyptsArea[["decimalLongitude"]]),y=(EucalyptsArea[["decimalLatitude"]]))
+points <- SpatialPoints(coords, proj4string = r@crs)
+
+values <- raster::extract(r,points)
+EucalyptsArea <- cbind.data.frame(values, EucalyptsArea) %>% 
+  dplyr::filter (!is.na(Temp))
+EucalyptsArea[1] <- EucalyptsArea[1]/10
+EucalyptsArea[3] <- EucalyptsArea[3]/10
+EucalyptsArea[4] <- EucalyptsArea[4]/10
+EucalyptsArea[5] <- EucalyptsArea[5]/10
+EucalyptsArea[6] <- EucalyptsArea[6]/10
+
+EucalyptsArea <- EucalyptsArea %>% 
+  mutate(log_MAP = log10(Prec))
+```
+
+```{r Generating Wright et al's data}
+  # Looking into the differences in leaf area by species, recorded in other databases (Wright's and AusTraits)
+
+  # Wright's data is available at http://dx.doi.org/10.1126/science.aal4760. Data used were filtered into woody simple leaves.
+#Wrights_data_full <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/Wrights_data.csv") 
+
+Wrights_data_full <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/Wrights_data_v2.csv") 
+colnames(Wrights_data_full)[10] <- "Woody"
+colnames(Wrights_data_full)[14] <- "MAR"
+colnames(Wrights_data_full)[13] <- "Compound"
+
+Wrights_data <- Wrights_data_full %>% 
+  filter (Woody == "woody", Compound == "S") %>% 
+  mutate (source = "Wright") %>% 
+  select (MAR, Latitude, Longitude, MAT, MAP, source, Name_orig)
+colnames (Wrights_data) <- c('MAR', 'decimalLatitude', 'decimalLongitude', 'Temp', 'Prec', 'source', 'scientificName')
+
+Wrights_data_euc <- Wrights_data[grep("^Eucalyptus*", Wrights_data$scientificName), ]
+Wrights_data_ang <- Wrights_data[grep("^Angophora*", Wrights_data$scientificName), ]
+Wrights_data_cor <- Wrights_data[grep("^Corymbia*", Wrights_data$scientificName), ]
+Wrights_data_eucs <- rbind(Wrights_data_euc, Wrights_data_ang, Wrights_data_cor)
+colnames(Wrights_data_eucs)[1] <- "mask_area_results"
+```
+
+#Figure 2
+```{r Fig. 2a Plotting distribution of points}
+  # Creating the spatial object of Australia
+country_spdf <- raster::getData(name="GADM", country='AUS', level=2, path=".")
+country_dissolved <- unionSpatialPolygons(SpP=country_spdf, IDs=country_spdf@data$NAME_1)
+country_simplified <- gSimplify(spgeom=country_dissolved, tol=0.1)
+country_df <- fortify(country_simplified)
+
+states_proj = spTransform(country_dissolved, CRS("+init=epsg:3112"))
+states_proj = gSimplify(spgeom=states_proj, tol=1000) # tolerance values are in the units of the CRS
+
+  # Convert observations into a spatial object and project them.
+coords_df <- ref_result_RO[, c("decimalLongitude", "decimalLatitude")]
+coordRef = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+obs_spdf <- SpatialPointsDataFrame(coords=coords_df,
+                                   data=ref_result_RO,
+                                   proj4string=coordRef)
+obs_spdf = spTransform(obs_spdf, CRS("+init=epsg:3112"))
+
+p1 <- ggplot (ref_result_RO, aes(x=decimalLongitude, y=decimalLatitude)) +
+  geom_polygon (data=country_df, aes(x=long, y=lat, group=group), color="darkgrey", fill="white") + 
+  geom_point (size = 0.5, alpha = 0.05, color = "#59AD00") +
+  coord_equal (ylim=c(-45, -8), xlim=c(110, 155)) +
+  xlab(expression(paste("Longitude ("^"o",")"))) + ylab(expression(paste("Latitude ("^"o",")"))) + theme_bw ()
+```
+
+```{r Fig 2b Precipitation heatmap}
+set.seed(16)
+
+lat_prec <- runif(n = 500000, min = -43.644444, max = -10.689167)
+long_prec <- runif(n = 500000, min = 113.155000, max = 153.636944)
+
+coords <- data.frame(x=long_prec,y=lat_prec)
+points <- SpatialPoints(coords, proj4string = r@crs)
+
+library(CoordinateCleaner)
+
+values <- raster::extract(r,points)  
+prec_values <- cbind.data.frame(values, lat_prec, long_prec) %>% 
+  dplyr::select(Prec, lat_prec, long_prec) %>% 
+  filter(!is.na(Prec)) %>% 
+  mutate(countrycode = "AUS")
+
+prec_values <- cc_coun(prec_values, lon = "long_prec", lat = "lat_prec")
+
+library(RColorBrewer)
+
+p2 <- ggplot(prec_values, aes(x=long_prec, y=lat_prec)) +
+  stat_summary_2d(aes(z = Prec), bins = 5, binwidth=0.3) +
+  scale_fill_viridis_c() +
+  #scale_fill_gradient2(low = "burlywood1", mid = "olivedrab3", high = "royalblue3", midpoint=1200) +
+  geom_polygon(data=country_df, aes(x=long, y=lat, group=group), color="black", fill=NA) + xlab(expression(paste("Longitude ("^"o",")"))) + ylab(expression(paste("Latitude ("^"o",")"))) +
+  coord_equal(ylim=c(-45, -8), xlim=c(110, 155)) + 
+  guides(fill=guide_legend(title="Mean annual \nprecipitation (mm)")) +
+  theme_bw() 
+```
+
+```{r Fig. 2c Temperature heatmap}
+set.seed(16)
+
+lat_temp <- runif(n = 500000, min = -43.644444, max = -10.689167)
+long_temp <- runif(n = 500000, min = 113.155000, max = 153.636944)
+
+coords <- data.frame(x=long_temp,y=lat_temp)
+
+r <- raster::getData("worldclim",var="bio",res=2.5)
+r <- r[[c(1,12,6,5,8,9)]]
+names(r) <- c("Temp","Prec","Coldest","Hottest","Wettest","Driest")
+
+points <- SpatialPoints(coords, proj4string = r@crs)
+
+library(CoordinateCleaner)
+
+values <- raster::extract(r,points)  
+temp_values <- cbind.data.frame(values, lat_temp, long_temp) %>% 
+  dplyr::select(Temp, lat_temp, long_temp) %>% 
+  filter(!is.na(Temp)) %>% 
+  mutate(countrycode = "AUS")
+
+temp_values <- cc_coun(temp_values, lon = "long_temp", lat = "lat_temp")
+
+temp_values[1] <- temp_values[1]/10
+library(RColorBrewer)
+
+p3 <- ggplot(temp_values, aes(x=long_temp, y=lat_temp)) +
+  stat_summary_2d(aes(z = Temp), bins = 5, binwidth=0.3) +
+  scale_fill_viridis_c(direction = -1) +
+  #scale_fill_gradient2(low = "burlywood1", mid = "olivedrab3", high = "royalblue3", midpoint=1200) +
+  geom_polygon(data=country_df, aes(x=long, y=lat, group=group), color="black", fill=NA) + xlab(expression(paste("Longitude ("^"o",")"))) + ylab(expression(paste("Latitude ("^"o",")"))) +
+  coord_equal(ylim=c(-45, -8), xlim=c(110, 155)) + 
+  guides(fill=guide_legend(title="Mean annual \ntemperature (C)")) +
+  theme_bw() 
+
+plot_top <- (plot_spacer() + p1 + plot_spacer() + plot_layout(widths = c(1,2,1)))
+plot_all <-  plot_top / (p3 + p2) + plot_annotation(tag_levels = 'a')
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Aust_prec-temp-distrib.jpg",plot=plot_all, units = "px", height = 2000, width = 2850, limitsize = FALSE)
+```
+
+
+#Figure 5
+```{r Fig 5 Comparing different datasets spread to ours - density + frequency}
+  #Getting a shared species list from ML and AusTraits datasets
+colnames(EucalyptsArea)[11] <- "scientificName"
+sp_list_both <- inner_join(EucalyptsArea, ref_result_RO, by = "scientificName") 
+sp_list_both <- inner_join(sp_list_both, Wrights_data_eucs, by = "scientificName") 
+sp_list_both <- unique(sp_list_both$scientificName)
+
+  #Getting a list of top 5 most sampled species
+top_smpled <- ref_result_RO %>% 
+  filter(scientificName %in% sp_list_both) %>% 
+  group_by (scientificName) %>% 
+  summarise (n = n())
+top_smpled <- arrange(top_smpled, desc(n)) %>% 
+  filter(scientificName != "Eucalyptus viminalis" & scientificName != "Eucalyptus dealbata")
+top_smpled <- as.list(top_smpled[1:4,1])
+
+  #Filtering datasets to those 5 most sampled species
+AusTraits_tmp <- EucalyptsArea %>% filter(mapply('%in%', scientificName, top_smpled)) %>% 
+  mutate (source = "AusTraits") %>% 
+  select (scientificName, mask_area_results, source)
+
+ML_tmp <- ref_result %>%  filter(mapply('%in%', scientificName, top_smpled)) %>% 
+  mutate (source = "ML")  %>% 
+  select (scientificName, mask_area_results, source)
+
+Wright_tmp <- Wrights_data_eucs %>%  filter(mapply('%in%', scientificName, top_smpled)) %>% 
+  mutate (source = "Wright")  %>% 
+  select (scientificName, mask_area_results, source)
+
+tmp_df_merge <- rbind(AusTraits_tmp, ML_tmp, Wright_tmp)
+
+  #Getting means of species of datasets
+AusTraits_mean_tmp <- AusTraits_tmp %>% 
+  group_by (scientificName) %>% 
+  summarise (mean = mean(mask_area_results)) %>% 
+  mutate (source = "AusTraits")
+
+ML_mean_tmp <- ML_tmp %>% 
+  group_by (scientificName) %>% 
+  summarise (mean = mean(mask_area_results)) %>% 
+  mutate (source = "ML")
+
+Wright_mean_tmp <- Wright_tmp %>% 
+  group_by (scientificName) %>% 
+  summarise (mean = mean(mask_area_results)) %>% 
+  mutate (source = "Wright")
+
+tmp_mean_merge <- rbind(AusTraits_mean_tmp, ML_mean_tmp, Wright_mean_tmp)
+
+
+  #Plotting by polygon density then frequency histogram
+p1 <- ggplot(data=tmp_df_merge, aes(x =mask_area_results, y=..scaled.., fill = source)) +
+  geom_density(alpha = 0.3) +
+  #geom_freqpoly(data=tmp_df_merge, aes(y = ..density.., x=mask_area_results, colour = source), alpha=0.6, position="identity", bins = 15)  + 
+  #geom_histogram(alpha=0.5, position="identity") +
+  scale_x_log10() +
+  facet_wrap(~scientificName, ncol = 1) +
+  geom_vline(data=tmp_mean_merge, aes(xintercept=mean, colour = source), linetype="dashed", size = 0.6) +
+  xlab(expression(paste("Leaf size (cm"^"2",")"))) +
+  ylab("Density") +
+  theme_bw() +
+  theme (panel.grid.major=element_blank(), panel.grid.minor=element_blank())
+p1
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/AusTraits_Density_Plot.jpg",plot=p1, units = "px", height = 1800, width = 3300, limitsize = FALSE)
+
+p2 <- ggplot(data=tmp_df_merge, aes(y = ..count.., x = mask_area_results, group = source)) +
+  geom_freqpoly(color = "black", bins= 50, position="identity")  + 
+  geom_histogram(aes(fill = source), bins= 50,alpha=0.4, position="identity") +
+  scale_x_log10() +
+  facet_wrap(~scientificName, scales = "free_y", ncol = 1) +
+  geom_vline(data=tmp_mean_merge, aes(xintercept=mean, color = source), linetype="dashed", size = 0.6) +
+  xlab(expression(paste("Leaf size (cm"^"2",")"))) +
+  ylab("Frequency count") +
+  theme_bw() +
+  theme (panel.grid.major=element_blank(), panel.grid.minor=element_blank(),  legend.position = "none") +
+  scale_fill_discrete(name = "Dataset source") + scale_color_discrete(name = "Dataset source")
+p2
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/AusTraits_Frequency_Plot.jpg",plot=p2, units = "px", height = 1800, width = 3300, limitsize = FALSE)
+
+plot_all <- p2 + p1  + plot_annotation(tag_levels = 'a')
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/AusTraits_Density+Frequency_Plot.jpg",plot=plot_all, units = "px", height = 2000, width = 3500, limitsize = FALSE)
+```
+
+#Figure 6
+``` {r Basic plots between trait x climate}
+p1 <- ggplot (data = ref_result_RO, mapping = aes (x=Prec, y=mask_area_results)) +
+  geom_point(size = 0.5, alpha = 0.05, color = "#59AD00") +
+  geom_smooth(method='lm', formula= y~x, color = "blue", linetype="dashed", linewidth= 0.7) +
+  labs(y=expression(paste("Leaf area (cm"^"2", ")")), x = "Mean annual precipitation (mm)") +
+  theme_bw() + 
+  theme (legend.position="none", axis.title.x=element_blank(), axis.text.x=element_blank()) +
+  scale_x_continuous(trans='log10') + scale_y_continuous(trans='log10', limits = c(0.15, 120)) +
+  geom_abline(slope = (1.075), intercept = (-2.322), linetype="dashed", color = "red", linewidth=0.7) +
+  annotate(geom = "label", label="Wright et al.:\n Slope = 1.075,\n R2 = 0.24,\n RSE = 0.052", x=1900, y=65, color = "red") +
+  annotate(geom = "label", label="ML: Slope = 0.38,\n R2 = 0.072,\n RSE = 0.0037", x=2500, y=5, color = "blue")
+
+
+p2 <- ggplot (data = ref_result_RO, mapping = aes (x=Temp, y=mask_area_results)) +
+  geom_point(size = 0.5, alpha = 0.05, color = "#59AD00") +
+  geom_smooth(method='lm', formula= y~x, color = "blue", linetype="dashed", linewidth= 0.7) +
+  labs(y=expression(paste("Leaf area (cm"^"2", ")")), x = expression(paste("Mean annual temperature ("^"o", "C)"))) +
+  theme_bw() +
+  theme (legend.position="none", axis.title=element_blank(), axis.text=element_blank()) +
+  scale_y_continuous(trans='log10', limits = c(0.15, 120)) +
+  geom_abline(slope = 0.043, intercept = 0.207, linetype="dashed", color = "red", linewidth=0.7) +
+  annotate(geom = "label", label="Wright et al.:\n Slope = 0.043,\n R2 = 0.15,\n RSE = 0.054", x=25, y=70, color = "red") +
+  annotate(geom = "label", label="ML: Slope = 0.0027,\n R2 = 0.0011,\n RSE = 0.00022", x=25, y=3, color = "blue")
+
+p3 <- ggplot (data = ref_result_RO, mapping = aes (x=Prec, y=circle_area_results)) +
+  geom_point(size = 0.5, alpha = 0.05, color = "#59AD00") +
+  geom_smooth(method='lm', formula= y~x, color = "blue", linetype="dashed", linewidth= 0.7) +
+  labs(y=expression(paste("Largest in-circle area (cm"^"2", ")")), x = "Mean annual precipitation (mm)") +
+  scale_x_continuous(trans='log10') + scale_y_continuous(trans='log10', limits = c(0.02, 120)) +
+  theme_bw() +
+  theme (legend.position="none") +
+  annotate(geom = "label", label="ML: Slope = 0.47,\n R2 = 0.073,\n RSE = 0.0046", x=2500, y=25, color = "blue")
+
+p4 <- ggplot (data = ref_result_RO, mapping = aes (x=Temp, y=circle_area_results)) +
+  geom_point(size = 0.5, alpha = 0.05, color = "#59AD00") +
+  geom_smooth(method='lm', formula= y~x, color = "blue", linetype="dashed", linewidth= 0.7) +
+  labs(y=expression(paste("Largest in-circle area (cm"^"2", ")")), x = expression(paste("Mean annual temperature ("^"o", "C)"))) +
+  scale_y_continuous(trans='log10', limits = c(0.02, 120)) +
+  theme_bw() +
+  theme (legend.position="none", axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  annotate(geom = "label", label="ML: Slope = 0.00074,\n R2 = 0.000048,\n RSE = 0.00027", x=25, y=10, color = "blue")
+  
+
+result <- (p1 | p2) / (p3 | p4)
+
+#plot_all
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Basic_Climate_Trait_PlotThesis.jpg",plot=result, units = "px", height = 2600, width = 3000, limitsize = FALSE)
+```
+
+```{r Basic trait x climate plot coefficients}
+lm <- lm(log10(mask_area_results) ~ Temp, data = ref_result_RO)
+lm_int <- coef(lm)[[1]]
+lm_slp <- coef(lm)[[2]]
+lm_rsq <- summary(lm)$adj.r.squared
+lm_rse <- as.numeric(coef(summary(lm))[, "Std. Error"][2])
+lm_res <- cbind(lm_int, lm_slp, lm_rsq, lm_rse)
+lm_res
+```
+
+#Table 2
+```{r Table of lm}
+  # Getting the overall slope
+lm <- lm(log10(mask_area_results) ~ log10(Prec), data = ref_result_RO)
+lm_int <- coef(lm)[[1]]
+lm_slp <- coef(lm)[[2]]
+lm_rsq <- summary(lm)$adj.r.squared
+lm_rse <- as.numeric(coef(summary(lm))[, "Std. Error"][2])
+lm_res <- cbind(lm_int, lm_slp, lm_rsq, lm_rse)
+lm_res
+
+
+  # Getting the slope of AusTrait's Eucs
+aust_lm <- lm(log10(mask_area_results)~log10(Prec), data = EucalyptsArea)
+aust_lm_int <- coef(aust_lm)[[1]]
+aust_lm_slp <- coef(aust_lm)[[2]]
+aust_lm_rsq <- summary(aust_lm)$adj.r.squared
+aust_lm_se <- as.numeric(coef(summary(aust_lm))[, "Std. Error"][2])
+aust_lm_res <- cbind(aust_lm_int, aust_lm_slp, aust_lm_rsq, aust_lm_se)
+
+  # Getting the slope of Wright's Eucs
+wrights_euc_lm <- lm(log10(mask_area_results)~log10(Prec), data = Wrights_data_eucs)
+wrights_euc_lm_int <- coef(wrights_euc_lm)[[1]]
+wrights_euc_lm_slp <- coef(wrights_euc_lm)[[2]]
+wrights_euc_lm_rsq <- summary(wrights_euc_lm)$adj.r.squared
+wrights_euc_lm_se <- as.numeric(coef(summary(wrights_euc_lm))[, "Std. Error"][2])
+wrights_euc_lm_res <- cbind(wrights_euc_lm_int, wrights_euc_lm_slp, wrights_euc_lm_rsq, wrights_euc_lm_se)
+
+  # Slope of all of Wright's data points reported in SI
+wrights_all_int <- as.numeric(-2.322)
+wrights_all_slp <- as.numeric(1.075)
+wrights_all_rsq <- as.numeric(0.24)
+wrights_all_se <- as.numeric(0.052)
+wrights_all_res <- cbind(wrights_all_int, wrights_all_slp, wrights_all_rsq, wrights_all_se)
+
+  # Table - comparing databases
+DB_1 <- c("Overall", "Austrait's euc'", "Wright's euc'", "Wright's all")
+
+lm_table_1 <- as.data.frame(rbind(lm_res, aust_lm_res, wrights_euc_lm_res, wrights_all_res)) 
+lm_table_1 <- cbind (DB_1, lm_table_1)
+lm_table_1
+
+```
+
+#Figure 7
+```{r Performing quantile regression}
+  # Setting names of the models for final dataframe
+model <- c("Overall","99th quantile", "90th quantile", "70th quantile", "40th quantile", "10th quantile", "1st quantile")
+
+  # Getting coefficients for a generic lienar model of dataset
+overall <- lm(log10(mask_area_results) ~ log10(Prec), data = ref_result_RO)
+overall_int <- as.numeric(coef(summary(overall))[,"Estimate"][1])
+overall_slp <- as.numeric(coef(summary(overall))[,"Estimate"][2])
+overall_se <- as.numeric(coef(summary(overall))[, "Std. Error"][2])
+overall_res <- as.vector(cbind(overall_int, overall_slp, overall_se))
+
+  # Setting a for loop to get coefficients at the quantiles below
+quantiles <- c(.99, .9, .7, .4, .1, .01)
+lm_tmp = NULL
+
+for (quants in quantiles) {
+  tmp_rq <- rq(log10(mask_area_results) ~ log10(Prec), data = ref_result_RO, tau = as.numeric(paste(quants)))
+  tmp_rq_int <- as.numeric(coef(summary(tmp_rq))[,"Value"][1])
+  tmp_rq_slp <- as.numeric(coef(summary(tmp_rq))[,"Value"][2])
+  tmp_rq_se <- as.numeric(coef(summary(tmp_rq))[,"Std. Error"][2])
+  tmp_res <- cbind(tmp_rq_int, tmp_rq_slp, tmp_rq_se)
+  lm_tmp <- as.data.frame(rbind(lm_tmp, tmp_res))
+}
+
+  # Joining the quantile dataframe to the overall linear model results then appending model names
+lm_tmp <- as.data.frame(rbind(overall_res, lm_tmp))
+lm_tmp <- as.data.frame(cbind(model, lm_tmp))
+
+  #Plotting the results
+order <- lm_tmp$model
+
+p1 <- ggplot() +
+  geom_point(data = ref_result_RO, mapping = aes(y = mask_area_results, x = Prec), alpha = 0.05, color = "grey70", size = 0.7) + #try grey60?
+  geom_abline(data = lm_tmp, mapping = aes(intercept = as.numeric(tmp_rq_int), slope = as.numeric(tmp_rq_slp)), color = "white", linewidth = 1) +
+  geom_abline(data = lm_tmp, mapping = aes(intercept = as.numeric(tmp_rq_int), slope = as.numeric(tmp_rq_slp), color = factor(model)), linewidth = 0.7) +
+  theme_bw() +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10', limits = c(0.1,120)) +
+  xlab ("Mean annual precipitation (mm)") +
+  ylab (expression(paste("Leaf area (cm"^"2",")"))) +
+  scale_color_discrete(limits = order) +
+  labs (color = "Quantile regressions")  +
+  theme (panel.grid.major=element_blank(), panel.grid.minor=element_blank())
+
+p1
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/lm_quantiles.jpg",plot=p1, units = "px", height = 1200, width = 2000, limitsize = FALSE)
+
+  #Coefficients
+aust_lm <- lm(log10(mask_area_results)~log10(Prec), data = EucalyptsArea)
+aust_lm_int <- coef(aust_lm)[[1]]
+aust_lm_slp <- coef(aust_lm)[[2]]
+aust_lm_se <- as.numeric(coef(summary(aust_lm))[, "Std. Error"][2])
+aust_lm_res <- cbind("Austrait's euc", aust_lm_int, aust_lm_slp, aust_lm_se)
+
+wrights_euc_lm <- lm(log10(mask_area_results)~log10(Prec), data = Wrights_data_eucs)
+wrights_euc_lm_int <- coef(wrights_euc_lm)[[1]]
+wrights_euc_lm_slp <- coef(wrights_euc_lm)[[2]]
+wrights_euc_lm_se <- as.numeric(coef(summary(wrights_euc_lm))[, "Std. Error"][2])
+wrights_euc_lm_res <- cbind("Wright's euc", wrights_euc_lm_int, wrights_euc_lm_slp, wrights_euc_lm_se)
+
+lm_table_3 <- as.data.frame(rbind(lm_tmp, as.vector(aust_lm_res), as.vector(wrights_euc_lm_res)))
+lm_table_3$tmp_rq_int <- as.numeric(lm_table_3$tmp_rq_int)
+lm_table_3$tmp_rq_slp <- as.numeric(lm_table_3$tmp_rq_slp)
+lm_table_3$tmp_rq_se <- as.numeric(lm_table_3$tmp_rq_se)
+
+lm_table_3
+```
+
+#Table 3
+```{r Table of lm}
+  # Getting the overall slope
+lm <- lm(log10(mask_area_results) ~ log10(Prec), data = ref_result_RO)
+lm_int <- coef(lm)[[1]]
+lm_slp <- coef(lm)[[2]]
+lm_rsq <- summary(lm)$adj.r.squared
+lm_rse <- as.numeric(coef(summary(lm))[, "Std. Error"][2])
+lm_res <- cbind(lm_int, lm_slp, lm_rsq, lm_rse)
+lm_res
+
+  # Getting the overall slope when we mean species
+sp_mean <- ref_result_RO_rmspless %>% 
+  group_by (scientificName) %>% 
+  summarise (mean = mean(mask_area_results), mean_Prec = mean(Prec))
+
+ggplot (data = sp_mean, aes(x=mean_Prec, y=mean)) +
+  geom_point () +
+  scale_y_continuous(trans='log10') +
+  scale_x_continuous(trans='log10') +
+  stat_smooth (method = 'lm')
+
+sp_mean_lm <- lm(log10(mean) ~ log10(mean_Prec), data = sp_mean)
+sp_mean_lm_int <- coef(sp_mean_lm)[[1]]
+sp_mean_lm_slp <- coef(sp_mean_lm)[[2]]
+sp_mean_lm_rsq <- summary(sp_mean_lm)$adj.r.squared
+sp_mean_lm_se <- as.numeric(coef(summary(sp_mean_lm))[, "Std. Error"][2])
+sp_mean_lm_res <- cbind(sp_mean_lm_int, sp_mean_lm_slp, sp_mean_lm_rsq, sp_mean_lm_se)
+  
+  # Getting the slope when including species as a random effect (with sheet id nested within)
+lmer <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|scientificName/id),  data=ref_result_RO_rmspless) 
+lmer_int <- as.numeric(coef(summary(lmer))[, "Estimate"][1])
+lmer_slp <- as.numeric(coef(summary(lmer))[, "Estimate"][2])
+lmer_rsq <- NA
+lmer_se <- NA
+lmer_res <- cbind(lmer_int, lmer_slp, lmer_rsq, lmer_se)
+
+  # Slope of all of Wright's data points reported in SI
+wrights_all_int <- as.numeric(-2.322)
+wrights_all_slp <- as.numeric(1.075)
+wrights_all_rsq <- as.numeric(0.24)
+wrights_all_se <- as.numeric(0.052)
+wrights_all_res <- cbind(wrights_all_int, wrights_all_slp, wrights_all_rsq, wrights_all_se)
+
+  # Table - comparing mixed model
+DB_2 <- c("Overall", "Mean species", "Mixed model", "Wright's all")
+
+lm_table_2 <- as.data.frame(rbind(lm_res, sp_mean_lm_res, lmer_res, wrights_all_res)) 
+lm_table_2 <- cbind (DB_2, lm_table_2)
+lm_table_2
+```
+
+
+#Fig. 8
+```{r Structuring tree}
+  # Using the phylogenetic tree (ML2) from Andrew Thornhill's analyses. Editing the tip labels to match the scientific names in our database 
+tree_node_dated <- read.tree("~/Uni/Honours/Thesis/Data Analysis or Code/Data/Eucalypts_ML2_dated_r8s.tre")
+tree_node_dated$tip.label <- gsub("_", " ", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" CANB", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" AHT", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" ANBG", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" MC", "", tree_node_dtated$tip.label)
+tree_node_dated$tip.label <- gsub(" Mt Annan", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" Royal Canberra Golf", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" LAN[[:digit:]]+", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" Jervis Bay", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" no sn", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" BG", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" L[[:digit:]]+", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" E[[:digit:]]+", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub(" [[:digit:]]+", "", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub("subsp", "subsp.", tree_node_dated$tip.label)
+tree_node_dated$tip.label <- gsub("'.*-'", "", tree_node_dated$tip.label)
+
+  # Filtering the data set to only have the species that are available in the phylogenetic tree, then finding the mean value of each variable by species
+trait_tree <- ref_result_RO_rmspless %>%
+  filter(ref_result_RO_rmspless$scientificName %in% tree_node_dated$tip.label) %>% 
+  dplyr::select(scientificName, mask_area_results, circle_area_results, curvature_results, Prec) %>% 
+  group_by(scientificName) %>% 
+  summarise (mean_logMAR = mean(log10(mask_area_results)), mean_logCAR=mean(log10(circle_area_results)), meanCR = mean(curvature_results), mean_Prec = mean(log10(Prec)))
+colnames(trait_tree) <- c("tip.label", "mean_logMAR", "mean_logCAR", "mean_CR", "mean_logPrec")
+
+  # Removing the tips of the phylogenetic tree that are not in our data set
+bool_missing_tips <- c(tree_node_dated$tip.label %in% trait_tree$tip.label)
+missing_tips <- tree_node_dated$tip.label[!bool_missing_tips]
+
+tree_node_dated_trim <- drop.tip(tree_node_dated, tip = missing_tips)
+```
+
+##Fig 8
+```{r Fig 8a Cutting tree at set intervals and plotting slopes}
+eucnode <- getMRCA(tree_node_dated_trim, tip=tree_node_dated_trim$tip.label)
+tree = extract.clade(tree_node_dated_trim, eucnode)
+
+bt_max <- max(branching.times(tree))
+ntax   <- length(tree$tip.label)
+taxout <- data.frame(T0=tree$tip.label)
+ 
+intervals <- 20
+ivals     <- seq(from = 1/intervals, to = 1 - 1/intervals, by = 1/intervals) * bt_max
+
+source("~/Uni/Honours/Thesis/Data Analysis or Code/Code/cutPhylo.R")
+
+  # catches the mapping of old tips to new tips...
+for (ii in 1:length(ivals)) {
+   cat(" Cutting tree at age ", ivals[ii], "\n")
+   ii_tax <- tree$tip.label
+   ii_cut <- cutPhyloTipMap(tree, age=ivals[ii],keep.lineage=TRUE)
+   ii_len_cut <- length(ii_cut$CutClades)
+   for (t in 1:ii_len_cut) {
+      tmptips <- ii_cut$CutClades[[ t ]]$tips
+      ii_tax[ match(tmptips,ii_tax) ] <- paste0("i",ii_cut$CutClades[[ t ]]$newtip)
+   }
+   cat(" Cut complete, processing ... \n")
+   taxout <- cbind(taxout,ii_tax)
+   tchar <- paste0("T", round(ivals[ii],2))
+   colnames(taxout)[ncol(taxout)] <- tchar
+}
+
+write.csv(taxout, file = "~/Delete/cut_taxa.csv")
+
+  #Creating a boolean T/F for whether the taxa is present at each interval, then joining to main dataframe
+taxa_intervals <- read.csv("~/Uni/Honours/Thesis/Data Analysis or Code/Data/cut_taxa.csv") 
+intervals <- colnames(taxa_intervals)
+
+sp_list <- taxa_intervals$T0
+
+#Plotting by species - for loop
+loop_coefficient_slp = NULL
+loop_coefficient_se = NULL
+
+for (interval in intervals) {
+ cat("doing group:", interval)
+ interval_species <- (taxa_intervals[[interval]]) #Getting list of species in interval
+ #interval_species <- interval_species[!grepl("^i",interval_species)] #Making a vector of species that are present in the interval
+ tmp_species <- as.data.frame(cbind(interval_species, sp_list)) #Making a DF that allows leftjoining
+ colnames(tmp_species) <- c("int_species", "scientificName")
+ tmp_res <- left_join(ref_result_RO_rmspless, tmp_species, by = 'scientificName') 
+ min_count_n <- tmp_res %>% #Seeing the frequency of each species, if only 1 the lmer below fails 
+  group_by(scientificName) %>% 
+  summarise(n=n())
+ min_count_n <- as.numeric(min(min_count_n$n))
+ if (min_count_n > 1) {
+  tmp_lmer <- lmer(log10(mask_area_results) ~ log10(Prec) + (1|int_species/id), data=tmp_res, control=lmerControl(optCtrl=list(maxfun=20000) )) #lmer using the species as a fixed with the sheet nested within each species
+ } else {
+  tmp_lmer <- lm(log10(mask_area_results) ~ log10(Prec), data=tmp_res) #in case there is only one species in the interval and cannot be used as an effect
+ }
+ summ_slp <- as.numeric(coef(summary(tmp_lmer))[, "Estimate"][2]) #Retrieving mean slope
+ summ_se <- as.numeric(coef(summary(tmp_lmer))[, "Std. Error"][2]) #Retrieving mean slope
+ results_slope <- cbind(interval, summ_slp)
+ se_slope <- cbind(interval, summ_se)
+ loop_coefficient_slp <- as.data.frame(rbind(loop_coefficient_slp, results_slope))
+ loop_coefficient_se <- as.data.frame(rbind(loop_coefficient_se, se_slope))
+}
+
+loop_coefficient <- left_join(loop_coefficient_slp, loop_coefficient_se, by = "interval")
+loop_coefficient$summ_slp <- as.numeric(loop_coefficient$summ_slp)
+loop_coefficient$summ_se <- as.numeric(loop_coefficient$summ_se)
+loop_coefficient$interval <- as.numeric(gsub("T", "", loop_coefficient$interval))
+
+
+p1 <- ggplot (loop_coefficient, aes(x=interval, y=summ_slp, group = 1)) +
+ geom_point() + 
+ geom_path() +
+ geom_errorbar(aes(ymin=summ_slp-summ_se, ymax=summ_slp+summ_se), width=.2) +
+ theme_bw() +
+ theme (legend.position = "none", axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+ scale_y_continuous(lim=c(0.13,0.43)) +
+ ylab("Slope") +
+ xlab("Million years ago") +
+ scale_x_continuous(n.breaks=10)
+```
+
+```{r Fig 8b}
+
+overall_lm <- lm(log10(mask_area_results) ~ log10(Prec), data=ref_result_RO_rmspless)
+summ_slp <- as.numeric(coef(summary(overall_lm))[, "Estimate"][2])
+summ_se <- as.numeric(coef(summary(overall_lm))[, "Std. Error"][2])
+overall_res <- cbind("overall", summ_slp, summ_se)
+
+
+levels <- c("scientificName", "Subgenus", "genus")
+
+results = NULL
+
+for (level in levels) {
+  tmp_lmer <- lmer (paste("log10(mask_area_results) ~ log10(Prec) + (1|",level,")"), data=ref_result_RO_rmspless)
+  summ_slp <- as.numeric(coef(summary(tmp_lmer))[, "Estimate"][2]) #Retrieving mean slope
+  summ_se <- as.numeric(coef(summary(tmp_lmer))[, "Std. Error"][2]) #Retrieving mean slope
+  tmp_res <- cbind(summ_slp, summ_se)
+  results <- as.data.frame(rbind(results, tmp_res))
+}
+
+results <- as.data.frame(cbind(levels, results))
+colnames(overall_res) <- colnames(results)
+plot_results <- as.data.frame(rbind(results, overall_res))
+plot_results$summ_se <- as.numeric(plot_results$summ_se); plot_results$summ_slp <- as.numeric(plot_results$summ_slp) 
+#plot_results <- plot_results %>% mutate (yloc = summ_slp + 0.02) # Setting location for plot label
+#plot_results[3,4] <- summ_slp - 0.02 # Setting location for plot label
+
+order <- c("scientificName", "Subgenus", "genus", "overall")
+p2 <- ggplot (plot_results, aes(x= levels, y=summ_slp, group = 1)) +
+ geom_point (size = 0.8) +
+ geom_errorbar (aes(ymin=summ_slp-summ_se, ymax=summ_slp+summ_se), width=.2) +
+ theme_bw() +
+ theme(axis.text.x = element_text (angle = 90, vjust = 0.5, hjust=1), axis.title.y=element_blank(),  axis.text.y=element_blank()) +
+ xlab ("Taxonomic level") + ylab ("Slope") +
+  scale_y_continuous(lim=c(0.13,0.43)) +
+ scale_x_discrete(limits = order, labels = c("Species", "Subgenus", "Genus", "Overall"))
+
+
+plot_top <- p1 + p2 + plot_layout(widths = c(2, 1), nrow = 1)
+
+
+```
+
+```{r Fig 8c-f}
+
+taxa_intervals <- read.csv("~/Uni/Honours/Thesis/Data Analysis or Code/Data/cut_taxa.csv") 
+scientificName <- taxa_intervals$T0
+tmp_taxa_intervals <- taxa_intervals[["T0"]]
+int_taxa_intervals <- as.data.frame(cbind(scientificName, tmp_taxa_intervals))
+
+interval_ref_result <- left_join(ref_result_RO, int_taxa_intervals, by = 'scientificName') %>% 
+ filter(!is.na(tmp_taxa_intervals))
+
+p3 <- ggplot(data = interval_ref_result, mapping = aes (x=Prec, y=mask_area_results)) +
+ geom_point(alpha = 0.02, color = "grey70") +
+ geom_smooth(method='lm', formula= y~x, aes(color = tmp_taxa_intervals), linewidth= 0.3, alpha=0.5, se=FALSE) +
+ labs(y=expression(paste("Leaf area (cm"^"2", ")")), x = expression(paste("Mean annual precipitation (mm)"))) +
+ theme_bw() +
+ theme (legend.position="none") +
+ scale_y_continuous(trans='log10', limits = c(0.5, 100)) +
+ scale_x_continuous(trans='log10') +
+ ggtitle("0 MY") +
+ theme(plot.title = element_text(hjust = 0.5))
+ ## beep boops 
+
+  #       #       #      #
+
+taxa_intervals <- read.csv("~/Uni/Honours/Thesis/Data Analysis or Code/Data/cut_taxa.csv") 
+scientificName <- taxa_intervals$T0
+tmp_taxa_intervals <- taxa_intervals[["T8.57"]]
+int_taxa_intervals <- as.data.frame(cbind(scientificName, tmp_taxa_intervals))
+
+interval_ref_result <- left_join(ref_result_RO, int_taxa_intervals, by = 'scientificName') %>% 
+ filter(!is.na(tmp_taxa_intervals))
+
+p4 <- ggplot(data = interval_ref_result, mapping = aes (x=Prec, y=mask_area_results)) +
+ geom_point(alpha = 0.02, color = "grey70") +
+ geom_smooth(method='lm', formula= y~x, aes(color = tmp_taxa_intervals), linewidth= 0.3, alpha=0.5, se=FALSE) +
+ labs(y=expression(paste("Leaf area (cm"^"2", ")")), x = expression(paste("Mean annual precipitation (mm)"))) +
+ theme_bw() +
+ theme (legend.position="none") +
+ scale_y_continuous(trans='log10', limits = c(0.5, 100)) +
+ scale_x_continuous(trans='log10') +
+ ggtitle("8.57 MY") +
+ theme(plot.title = element_text(hjust = 0.5),axis.title.y=element_blank(),  axis.text.y=element_blank(), legend.position = "none")
+ 
+
+  #       #       #      #
+
+taxa_intervals <- read.csv("~/Uni/Honours/Thesis/Data Analysis or Code/Data/cut_taxa.csv") 
+scientificName <- taxa_intervals$T0
+tmp_taxa_intervals <- taxa_intervals[["T28.58"]]
+int_taxa_intervals <- as.data.frame(cbind(scientificName, tmp_taxa_intervals))
+
+interval_ref_result <- left_join(ref_result_RO, int_taxa_intervals, by = 'scientificName') %>% 
+ filter(!is.na(tmp_taxa_intervals))
+
+p5 <- ggplot(data = interval_ref_result, mapping = aes (x=Prec, y=mask_area_results)) +
+ geom_point(alpha = 0.02, color = "grey70") +
+ geom_smooth(method='lm', formula= y~x, aes(color = tmp_taxa_intervals), linewidth= 0.3, alpha=0.5, se=FALSE) +
+ labs(y=expression(paste("Leaf area (cm"^"2", ")")), x = expression(paste("Mean annual precipitation (mm)"))) +
+ theme_bw() +
+ theme (legend.position="none") +
+ scale_y_continuous(trans='log10', limits = c(0.5, 100)) +
+ scale_x_continuous(trans='log10') +
+ ggtitle("28.58 MY") +
+ theme(plot.title = element_text(hjust = 0.5), axis.title.y=element_blank(),  axis.text.y=element_blank(), legend.position = "none")
+
+
+  #       #       #      #
+
+taxa_intervals <- read.csv("~/Uni/Honours/Thesis/Data Analysis or Code/Data/cut_taxa.csv") 
+scientificName <- taxa_intervals$T0
+tmp_taxa_intervals <- taxa_intervals[["T54.3"]]
+int_taxa_intervals <- as.data.frame(cbind(scientificName, tmp_taxa_intervals))
+
+interval_ref_result <- left_join(ref_result_RO, int_taxa_intervals, by = 'scientificName') %>% 
+ filter(!is.na(tmp_taxa_intervals))
+
+p6 <- ggplot(data = interval_ref_result, mapping = aes (x=Prec, y=mask_area_results)) +
+ geom_point(alpha = 0.02, color = "grey70") +
+ geom_smooth(method='lm', formula= y~x, aes(color = tmp_taxa_intervals), linewidth= 0.3, alpha=0.5, se=FALSE) +
+ labs(y=expression(paste("Leaf area (cm"^"2", ")")), x = expression(paste("Mean annual precipitation (mm)"))) +
+ theme_bw() +
+ scale_y_continuous(trans='log10', limits = c(0.5, 100)) +
+ scale_x_continuous(trans='log10') +
+ ggtitle("54.3 MY") +
+ theme(plot.title = element_text(hjust = 0.5), axis.title.y=element_blank(),  axis.text.y=element_blank(), legend.position = "none")
+
+plot_bot <- p3 + p4 + p5 + p6 + plot_layout(nrow = 1) & xlab(NULL) 
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Phylo_interval_plot_slopes.jpg",plot=plot_bot, units = "px", height = 1100, width = 4300, limitsize = FALSE)
+```
+
+```{r Fig. 8 joining}
+plot_all <- plot_top / plot_bot + plot_layout(heights = c(2,1)) + plot_annotation(tag_levels = 'a')
+
+plot_all_lab <- wrap_elements(panel = plot_all) +
+  labs(tag = "Mean annual precipitation (mm)") +
+  theme(
+    plot.tag = element_text(size = rel(1.2)),
+    plot.tag.position = "bottom"
+  )
+
+ggsave(filename="~/Uni/Honours/Thesis/Data Analysis or Code/Plots/Phylo_interval_plot_both.jpg",plot=plot_all_lab, units = "px", height = 3100, width = 4300, limitsize = FALSE)
+```
+
+##Phylogenetic signal
+```{r Phylogenetic signals}
+# Wrangling the data set as an array, with row names to allow us to find the phylogenetic signal
+mean_logMAR <- as.array(trait_tree$mean_logMAR)
+row.names(mean_logMAR) <- trait_tree$tip.label
+mean_logCAR <- as.array(trait_tree$mean_logCAR)
+row.names(mean_logCAR) <- trait_tree$tip.label
+mean_CR <- as.array(trait_tree$mean_CR)
+row.names(mean_CR) <- trait_tree$tip.label
+
+mean_logPrec <- as.array(trait_tree$mean_logPrec)
+row.names(mean_logPrec) <- trait_tree$tip.label
+
+  # Calculating phylogenetic signal from the phytools package
+psignal_logMAR <- phylosig(tree_node_dated_trim,
+                      x = mean_logMAR,
+                      test = TRUE)
+psignal_logCAR <- phylosig(tree_node_dated_trim,
+                      x = mean_logCAR,
+                      test = TRUE)
+psignal_CR <- phylosig(tree_node_dated_trim,
+                      x = mean_CR,
+                      test = TRUE)
+
+psignal_Prec <- phylosig(tree_node_dated_trim,
+                      x = mean_logPrec,
+                      test = TRUE)
+
+phylo_res <- cbind(psignal_logMAR, psignal_logCAR, psignal_CR, psignal_Prec)
+phylo_res
+```
+
+#Supplementary Infromation A
+```{r Scripts used to extract the datasets for model creation}
+library(tidyverse)
+lookup = read.csv ("~/Uni/Honours/Thesis/Data Analysis or Code/Data/Lookup_table.csv", header = T)
+colnames(lookup)[1] <- "scientificName"
+  
+data_ALA = read.csv ("~/Uni/Honours/Thesis/Data Analysis or Code/Data/Eucalyptus_genus_ALA_CUT.csv", header = T) %>% 
+  select (basisOfRecord, decimalLatitude, decimalLongitude, geodeticDatum, scientificName)
+data_herbarium = read.csv ("~/Uni/Honours/Thesis/Data Analysis or Code/Data/euc.csv", header = T) %>% 
+  select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
+  unite("scientificName", genus:specificEpithet, remove = T, sep = " ")
+data_merge = full_join(x = data_herbarium, y = data_ALA) %>% 
+  filter (basisOfRecord == "PRESERVED_SPECIMEN") %>%
+  filter (!str_detect(scientificName, ' x ')) %>% 
+  filter (!is.na(decimalLatitude))
+data_merge$scientificName <- sub("subsp.*", "", data_merge$scientificName)
+data_merge$scientificNameTrim = trimws (data_merge$scientificName, which = c("both"))
+data_merge = data_merge %>% 
+  select (-scientificName) %>% 
+  rename(scientificName = scientificNameTrim)
+data_merge = data_merge %>% left_join(by=c("scientificName"), lookup) 
+subg_summary <- data_merge %>% 
+  group_by (Subgenus) %>% 
+  summarise (speciesNumber = n_distinct(scientificName))
+
+##Eucalyptus
+data_herbarium_euc = read.csv ("~/Uni/Honours/Thesis/Data Analysis or Code/Data/euc.csv", header = T) %>% 
+  select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
+  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ") %>% 
+  filter (!is.na(decimalLatitude))
+data_herbarium_euc$scientificNameTrim = trimws (data_herbarium_euc$scientificName, which = c("both"))
+data_herbarium_euc = data_herbarium_euc %>% 
+  select (-scientificName) %>% 
+  rename(scientificName = scientificNameTrim)
+data_herbarium_euc = data_herbarium_euc %>% left_join(by=c("scientificName"), lookup) 
+subg_summary_euc <- data_herbarium_euc %>% 
+  group_by (Subgenus) %>% 
+  summarise (speciesNumber = n_distinct(scientificName))
+data_herbarium_euc = data_herbarium_euc %>% 
+  left_join(by=c("Subgenus"), subg_summary_euc)
+
+#Main randomised list for smaller subg        
+euc_small_list_main <- data_herbarium_euc %>% 
+  filter (speciesNumber <= 10) %>% 
+  group_by (Subgenus, scientificName) %>% 
+  slice_sample (n=1, replace = FALSE)
+#write.csv(euc_small_list_main, file = "euc_small_list_main.csv")
+
+#Backup randomised list for smaller subg up to 5 where possible
+euc_small_list_back <- data_herbarium_euc %>% 
+  filter (speciesNumber <= 10, !(id %in% euc_small_list_main))
+euc_small_list_back_Summ <- euc_small_list_back %>% 
+  group_by (scientificName) %>% 
+  summarise (Sheets = n_distinct(id))
+euc_small_list_back_small <- euc_small_list_back %>% 
+  left_join(by=c("scientificName"), euc_small_list_back_Summ) %>%  
+  filter (Sheets < 5) %>% 
+  group_by (scientificName) %>% 
+  mutate (rank = row_number())
+euc_small_list_back_big <- euc_small_list_back %>% 
+  left_join(by=c("scientificName"), euc_small_list_back_Summ) %>%  
+  filter (!Sheets < 5) %>% 
+  group_by (scientificName) %>% 
+  slice_sample (n=5, replace = FALSE) %>% 
+  mutate (rank = row_number()) 
+euc_small_list_back <- bind_rows(euc_small_list_back_big, euc_small_list_back_small)
+#write.csv(euc_small_list_back, file = "euc_small_list_back.csv")
+
+#Main randomised list for larger subg        
+euc_big_list_main_sp <- data_herbarium_euc %>% 
+  filter (speciesNumber > 10) %>% 
+  group_by (scientificName) %>% 
+  slice_sample (n=1, replace = FALSE)
+euc_big_list_main <- euc_big_list_main_sp %>% 
+  group_by (Subgenus) %>% 
+  slice_sample (n=10, replace = FALSE) %>% 
+  mutate (rank = row_number()) 
+#write.csv(euc_big_list_main, file = "euc_big_list_main.csv")
+
+#Backup randomised list for larger subg up to 5 where possible
+euc_big_list_back <- euc_big_list_main_sp %>% 
+  filter (speciesNumber > 10, !(id %in% euc_big_list_main)) %>% 
+  group_by (Subgenus) %>% 
+  slice_sample (n=5, replace = FALSE) %>% 
+  mutate (rank = row_number()) 
+#write.csv(euc_big_list_back, file = "euc_big_list_back.csv")
+
+##Angophora
+data_herbarium_ang = read.csv ("~/Uni/Honours/Thesis/Data Analysis or Code/Data/ang.csv", header = T) %>% 
+  select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
+  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ") %>% 
+  filter (!is.na(decimalLatitude))
+ang_list_main_sp <- data_herbarium_ang %>% 
+  group_by (scientificName) %>% 
+  slice_sample (n=1, replace = FALSE) %>% 
+  ungroup ()
+ang_list_main <- ang_list_main_sp %>% 
+  slice_sample (n=10, replace = FALSE)
+#write.csv(ang_list_main, file = "ang_list_main.csv")
+
+ang_list_back <- data_herbarium_ang %>% 
+  filter (!(id %in% ang_list_main)) %>% 
+  slice_sample (n=5, replace = FALSE) %>% 
+  mutate (rank = row_number())
+#write.csv(ang_list_back, file = "ang_list_back.csv")
+
+##Corymbia
+data_herbarium_cor = read.csv ("~/Uni/Honours/Thesis/Data Analysis or Code/Data/cor.csv", header = T) %>% 
+  select (id, decimalLatitude, decimalLongitude, genus, specificEpithet) %>% 
+  unite ("scientificName", genus:specificEpithet, remove = T, sep = " ") %>% 
+  filter (!is.na(decimalLatitude))
+cor_list_main_sp <- data_herbarium_cor %>% 
+  group_by (scientificName) %>% 
+  slice_sample (n=1, replace = FALSE) %>% 
+  ungroup ()
+cor_list_main <- cor_list_main_sp %>% 
+  slice_sample (n=10, replace = FALSE)
+#write.csv(cor_list_main, file = "cor_list_main.csv")
+
+cor_list_back <- data_herbarium_cor %>% 
+  filter (!(id %in% cor_list_main)) %>% 
+  slice_sample (n=5, replace = FALSE) %>% 
+  mutate (rank = row_number())
+#write.csv(cor_list_back, file = "cor_list_back.csv")
+```
+
+#Supplementary Information C
+```{r Plots between traits}
+  # Basic plots against leaf area and the area of the largest in-circle, and curvature
+ggplot (data = ref_result_RO, mapping = aes(x=mask_area_results, y=circle_area_results)) +
+  geom_point(alpha = 0.06) +
+  stat_smooth(method = 'lm', formula = y~x) +
+  labs(title = "Relationship between leaf area and in-circle area") +
+  theme_minimal() + xlab(expression(paste("Leaf size (cm"^"2",")"))) + ylab(expression(paste("Largest in-circle area (cm"^"2",")"))) 
+  
+ggplot (data = ref_result_RO, mapping = aes(x=mask_area_results, y=curvature_results)) +
+  geom_point(alpha = 0.06) +
+  stat_smooth(method = 'lm', formula = y~x) +
+  labs(title = "Relationship between leaf area and curvature") +
+  theme_bw()
+```
+
+#Supplementary Information D
+```{r Plotting residuals}
+  # Looking at the distribution of residuals based on the linear model below.
+PrecxMar_lm <- lm(log10(mask_area_results) ~ log10(Prec), data=ref_result_RO)
+
+ref_results_resid <- ref_result_RO
+ref_results_resid$residuals <- PrecxMar_lm$residuals
+
+ggplot (ref_results_resid, aes(x=Prec, y=residuals)) +
+  geom_point(size=0.5, alpha =0.1) +
+  scale_x_continuous(trans='log10') +
+  #scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=0, color="red")
+```
+
+```{r Large leaf bias}
+  #Processing predictions on random sheets
+QC_classres <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/BIGQC_classifier_results_test.csv")
+QC_results <- read_csv(file="~/Uni/Honours/Thesis/Data Analysis or Code/Data/BIGQC_joined_final_results.csv")
+QC_results$index <- as.character(QC_results$index)
+QC_results <- QC_results %>% 
+  mutate(scientificName = paste(genus, specificEpithet, sep=" ")) 
+
+QC_classres$filename <- gsub("NSW", "NSW:NSW:NSW ", QC_classres$filename)
+QC_classres$filename <- gsub(".jpg", "", QC_classres$filename)
+QC_classres <- separate(data = QC_classres, col = filename, into = c("id", "index"), sep = "_")
+
+QC_res <- left_join(QC_results, QC_classres)
+
+ggplot(QC_res) +
+  geom_boxplot(aes(x=pr_class, y=log10(mask_area_results))) +
+  theme_minimal()
+```
+
+```{r Comparing AusTraits/Wright species mean}
+  # Getting the average  leaf area for Wright's data, AusTraits data and our data respectively
+Wrights_data_spsumm <- Wrights_data_eucs %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  summarise(mean_Wright=mean(mask_area_results))
+
+EucalyptsArea_spsumm <- EucalyptsArea %>% 
+  ungroup() %>% 
+  group_by(taxon_name) %>% 
+  summarise(mean_AusTraits=mean(mask_area_results))
+colnames(EucalyptsArea_spsumm)[1] <- "scientificName"
+
+ref_result_RO_spsumm <- ref_result_RO %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  summarise(mean_ML=mean(mask_area_results))
+
+
+Wrights_data_spsumm <- Wrights_data_eucs %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  summarise(mean_Wright=mean(log10(mask_area_results)))
+
+EucalyptsArea_spsumm <- EucalyptsArea %>% 
+  ungroup() %>% 
+  group_by(taxon_name) %>% 
+  summarise(mean_AusTraits=mean(log10(mask_area_results)))
+colnames(EucalyptsArea_spsumm)[1] <- "scientificName"
+
+ref_result_RO_spsumm <- ref_result_RO %>% 
+  ungroup() %>% 
+  group_by(scientificName) %>% 
+  summarise(mean_ML=mean(log10(mask_area_results)))
+
+Wright_Aust <- inner_join(Wrights_data_spsumm, EucalyptsArea_spsumm, by ="scientificName")
+Wright_Ours <- inner_join(Wrights_data_spsumm, ref_result_RO_spsumm, by ="scientificName")
+Aust_Ours <- inner_join(EucalyptsArea_spsumm, ref_result_RO_spsumm, by ="scientificName")
+
+ggplot(Wright_Aust, aes(x=mean_Wright, y=mean_AusTraits)) +
+  geom_point(aes(colour = scientificName)) +
+  geom_abline(slope=1) +
+  theme(legend.position="none")+ 
+  geom_smooth(method="lm", linewidth = 0.5)
+
+ggplot(Wright_Ours, aes(x=mean_Wright, y=mean_ML)) +
+  geom_point(aes(colour = scientificName)) +
+  geom_abline(slope=1) +
+  theme(legend.position="none")+ 
+  geom_smooth(method="lm", linewidth = 0.5)
+
+ggplot(Aust_Ours, aes(x=mean_AusTraits, y=mean_ML)) +
+  geom_point(aes(colour = scientificName)) +
+  geom_abline(slope=1) +
+  theme(legend.position="none") + 
+  geom_smooth(method="lm", linewidth = 0.5)
+```
