@@ -1,0 +1,2 @@
+The script 'herbarium_metadata_extraction.py' is used to create the metadata files euc.csv, ang.csv, and cor.csv. 
+'nsw_img_utils.py' is a dependency.
