@@ -4,3 +4,7 @@ Hello! This repository includes the key scripts and data files used for my honou
 
 /Data - includes files used in code
 
+/leaf_BigLeaf_QC - datasets used to analyse the quality control of our machine learning model, as in Supplementary Information D
+
+/Conda Environments - includes the .yml files of the conda environments used to perform the training/testing/use of the machine learning models, and the extraction of traits from the binary masks of the machine learning model predictions 
+
