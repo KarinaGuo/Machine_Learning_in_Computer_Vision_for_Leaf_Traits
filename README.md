@@ -43,7 +43,7 @@ python /home/botml/code/py/cut_focal_box.py /data/botml/train_labels_updatedlabs
 
 <p>A portion of these train labels were then moved to validation (20% of all annotated input data). The input data for training, validating and testing were then converted to a COCO file format.</p>
 
-<p><i> Converting file formats to COCO. Where <b>/data</b> is the input directory. <b>--output</b> is the output file. <b>--classes</b> is the desired training label to be included. <b>--polyORbb</b> is whether the annotation is a polygon or a bounding box.</p>
+<p><i> Converting file formats to COCO. Where <b>/data</b> is the input directory. <b>--output</b> is the output file. <b>--classes</b> is the desired training label to be included. <b>--polyORbb</b> is whether the annotation is a polygon or a bounding box.</i><</p>
 
 ```
 python /home/botml/code/py/lm2coco.py /data/botml/leaf_dimension/ELEVEN_DuplTen_ExtSheets/data/ --output /data/botml/leaf_dimension/ELEVEN_DuplTen_ExtSheets/data.json --classes 'Leaf100' --polyORbb 'poly'
@@ -52,3 +52,14 @@ python /home/botml/code/py/lm2coco.py /data/botml/leaf_dimension/ELEVEN_DuplTen_
 
 python /home/botml/code/py/lm2coco.py /data/botml/leaf_dimension/ELEVEN_DuplTen_ExtSheets/test/ --output /data/botml/leaf_dimension/ELEVEN_DuplTen_ExtSheets/test.json --classes 'Leaf100' --polyORbb 'poly'
 ```
+<p>At this stage, the working directory should include, if they are not present please make an empty directory or download from the data directory in this repository if present:
+  <ul>
+  <li>/coco_eval</li>
+  <li>/data</li>
+  <li>/validation</li>
+  <li>/test</li>
+  <li>/pred</li>
+  <li>/code</li>
+  <li>data.json</li>
+  <li>validation.json</li>
+  <li>test.json</li></ul></p>
