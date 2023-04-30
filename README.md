@@ -92,8 +92,7 @@ python train_leaf.py
 ```
 <p>The trained model will be saved in the /model directory</p>
 
-<i><p>Testing the model</i>. The following variables are included in the script below, and would likely need to be changed to be relevant.
-<p>
+<i><p>Testing the model</i>. The following variables are included in the script below, and may need to be changed to be relevant. Following this, quantitative evaluation metrics were calculated using machine_accuracy_process_v2.R.</p>
 
 <ul>
   <li><b>img_dir</b>: The directory where the test images are located.</li>
@@ -177,7 +176,7 @@ python /data/botml/leaf_dimension_classifier/code/extracting_leaves_cropped_iter
 ```
 python classify_leaves.py
 ```
-
+<p>The final model is deposited into /model/classifier</p>
 <p>The previous steps for preparing the data is repeated for the test leaf images and is placed in /classifier_training_testdata.</p>
 <i><p>Testing the model</i>. The following variables are included in the script below, and would likely need to be changed to be relevant.
 <ul>
@@ -191,7 +190,7 @@ python classify_leaves.py
 python predict_from_classifierv2.py
 ```
 
-<p>The final model is deposited into /model/classifier</p>
+<p>Evaluation metrics were calculated using machine_accuracy_process_v2.R after manually editing the output of the classifier.</p>
 
 <h1>Extracting traits</h1>
 <p>Traits were extracted using an R script leaf_dimension_calculations.R where each leaf mask is fed in as an argument. This was integrated into the final loop we used over the entire herbarium dataset. Please refer to below for running the leaf trait extraction script.</p>
