@@ -137,3 +137,78 @@ python predict_leaf_vis.py
 
 <h1>Leaf classification model</h1>
 <h2>Preparing the data</h2>
+<p>First, the leaf segmentation model is used on a dataset to create the leaf masks required for the training & validation steps of this model. To do this, the predict_leaf_vis.py script is run, which creates a numpy file that includes the binary masks of each leaf per image. These binary masks are then extracted, resized, padded, recoloured and a connected component analysis with OTSU thresholding applied. This is done with the script below</p>
+
+<p><i>Extracting leaf masks from the leaf segmentation model predictions.</i> Where the structure is as such 
+  <ul>
+    <li><b>_predictions.npy</b>: Numpy file from the output of the segmentation mask</li>
+    <li><b>/testing_images</b>: Images used on the leaf segmentation model, to generate the numpy file above</li>
+    <li><b>/classifier_training_testdata</b>: Output file of leaf images</li>
+  </ul>
+</p>
+
+```
+python /data/botml/leaf_dimension_classifier/code/extracting_leaves_cropped_iter_v2.py "/data/botml/leaf_dimension_classifier/testing_images_pred/_predictions.npy" "/data/botml/leaf_dimension_classifier/testing_images/" "/data/botml/leaf_dimension_classifier/input_classifier_data/"
+```
+
+<p>These images are then manually separated into 'valid' and 'invalid' classes in a separate directory as /classed_training_data/N and /classed_training_data/Y. At this stage, the working directory should include, if they are not present please make an empty directory or download from the data directory in this repository if present:
+  
+<ul>
+  <li>/code: The directory of relevant code </li>
+  <li>/model/classifier/: Directory where the final model is stored</li>
+  <li>/pred_leaf: Full images of used to create the training dataset</li>
+  <li>/input_classifier_data: The cropped unclassed images used for training/validating, from the predictions of the leaf segmentation model</li>
+  <li>/classed_training_data: The cropped classed images used for training/validating, from the predictions of the leaf segmentation model</li>
+  <li>/classifier_training_testdata: The cropped classed images used for testing, from the predictions of the leaf segmentation model </li>
+  <li>classifier_results_test.csv: A .csv file that will include the predictions of the model </li>
+</ul>
+</p>
+
+<h2>Training, validating, and testing the model</h2>
+<p>Edit the scripts according to your set up. This would include changing the training_path and the training parameters.</p>
+<i><p>Training & validating the model</i>. The following variables are included in the script below, and would likely need to be changed to be relevant.
+<ul>
+  <li><b>data_dir</b>: The directory where the classified training data is located.</li>
+  <li><b>val_ratio</b>: The fraction of the training data to use for validation.</li>
+  <li><b>num_epochs</b>: The number of epochs to train the model for.</li>
+  <li><b>model_out</b>: The path to the file where the trained model will be saved.</li>
+</ul></p>
+
+```
+python classify_leaves.py
+```
+
+<p>The previous steps for preparing the data is repeated for the test leaf images and is placed in /classifier_training_testdata.</p>
+<i><p>Testing the model</i>. The following variables are included in the script below, and would likely need to be changed to be relevant.
+<ul>
+  <li><b>train_dir</b>: The directory where the classified training data is located.</li>
+  <li><b>data_dir</b>: The directory where the test data is located.</li>
+  <li><b>model_file</b>: The path to the file where the trained model will be saved.</li>
+  <li><b>out_dir</b>: The path to the file where the results will be saved.</li>
+</ul></p>
+
+```
+python predict_from_classifierv2.py
+```
+
+<p>The final model is deposited into /model/classifier</p>
+
+<h1>Extracting traits</h1>
+<p>Traits were extracted using an R script leaf_dimension_calculations.R where each leaf mask is fed in as an argument. This was integrated into the final loop we used over the entire herbarium dataset. Please refer to below for running the leaf trait extraction script.</p>
+
+<h1>Using the final models on the entire dataset</h1>
+<p>The final model outputs were then moved to the directories /model/d2, /model/classifier, nesting in the main working directory of the final run.</p>
+<p>The final run was then executed using the bash script running_code.sh in a working directory, it calls tailored codes that can be found in this repository under /data/final_run. This script performs the following operations:
+
+<ol>
+  <li>Copies the images to a temporary directory.</li>
+  <li>Predicts the dimensions of the leaves in the images.</li>
+  <li>Crops the leaves from the images.</li>
+  <li>Tracks duplicates.</li>
+  <li>Predicts the class of the leaves in the images.</li>
+  <li>Removes temporary files.</li>
+  <li>Executes R code to generate traits for the leaves.</li>
+  <li>Deletes the temporary files.</li>
+  <li>The script then merges the outcomes with the metadata and displays a message indicating that the script has finished executing.</li>
+</ol>
+</p>
