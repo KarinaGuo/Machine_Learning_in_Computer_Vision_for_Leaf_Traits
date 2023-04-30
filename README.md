@@ -153,15 +153,14 @@ python /data/botml/leaf_dimension_classifier/code/extracting_leaves_cropped_iter
 <p>These images are then manually separated into 'valid' and 'invalid' classes in a separate directory as /classed_training_data/N and /classed_training_data/Y. At this stage, the working directory should include, if they are not present please make an empty directory or download from the data directory in this repository if present:
   
 <ul>
-  <li>/code: The directory of relevant code </li>
-  <li>/model/classifier/: Directory where the final model is stored</li>
-  <li>/pred_leaf: Full images of used to create the training dataset</li>
-  <li>/input_classifier_data: The cropped unclassed images used for training/validating, from the predictions of the leaf segmentation model</li>
-  <li>/classed_training_data: The cropped classed images used for training/validating, from the predictions of the leaf segmentation model</li>
-  <li>/classifier_training_testdata: The cropped classed images used for testing, from the predictions of the leaf segmentation model </li>
-  <li>classifier_results_test.csv: A .csv file that will include the predictions of the model </li>
+  <li><b>/code</b>: The directory of relevant code</li>
+  <li><b>/model/classifier</b>: Directory where the final model is stored</li>
+  <li><b>/pred_leaf</b>: Full images of used to create the training dataset</li>
+  <li><b>/input_classifier_data</b>: The cropped unclassed images used for training/validating, from the predictions of the leaf segmentation model</li>
+  <li><b>/classed_training_data</b>: The cropped classed images used for training/validating, from the predictions of the leaf segmentation model</li>
+  <li><b>/classifier_training_testdata</b>: The cropped classed images used for testing, from the predictions of the leaf segmentation model</li>
+  <li><b>classifier_results_test.csv</b>: A .csv file that will include the predictions of the model</li>
 </ul>
-</p>
 
 <h2>Training, validating, and testing the model</h2>
 <p>Edit the scripts according to your set up. This would include changing the training_path and the training parameters.</p>
