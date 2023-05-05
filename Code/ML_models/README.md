@@ -7,7 +7,7 @@ predict_leaf.py generated all summary evaluation metrics (quantitative + qualita
   <li>python updating_labels.py # Changes the labels of the polygons according to the iteration</li>
   <li>python cut_focal_box.py # Trims the herbarium sheet images to the bounding box</li>
   <li>Move portion of train labels to validation</li>
-  <li>python lm2coco.py ~/data/ #Converting the training dataset to a COCO dataset</li>
+  <li>python lm2coco.py ~/data/ #Converting the training dataset to a COCO dataset (modified from <a href="https://github.com/Tony607/labelme2coco/blob/master/labelme2coco.py">Tony607/labelme2coco</a>)</li>
   <li>python lm2coco.py ~/validation/ #Converting the validation dataset to a COCO dataset</li>
   <li>python lm2coco.py ~/test/ #Converting the test dataset to a COCO dataset</li>
   <li>Change train_leaf.py, predict_leaf.py, and predict_leaf_vis.py appropriately</li>
