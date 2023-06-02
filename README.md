@@ -1,12 +1,12 @@
 Hello! This repository includes the key scripts and data files used for my honours thesis. File paths, file names, and such may need to be changed. Let me know if anything is missing or isn't working. 
 
-/Code - includes code used for the model's accuracy predictions, the model creations, and the analysis of the datasets
+/Code - includes code used for the methods i.e. (determining the model's accuracy in its predictions, the creation of the model), and the analysis of the subsequent dataset
 
 /Data - includes files used in code
 
 /leaf_BigLeaf_QC - datasets used to analyse the quality control of our machine learning model, as in Supplementary Information D
 
-/Conda Environments - includes the .yml files of the conda environments used to perform the training/testing/use of the machine learning models, and the extraction of traits from the binary masks of the machine learning model predictions 
+/Conda Environments - includes the .yml files of the conda environments used. This enables necessary software dependencies are listed to reproduce the environment used to perform the training/testing/use of the machine learning models, and the extraction of traits from the binary masks of the machine learning model predictions.
 
 <h1>Leaf segmentation model</h1>
 <h2>Preparing the data</h2>
@@ -14,7 +14,7 @@ Hello! This repository includes the key scripts and data files used for my honou
 <p>As this was integrated into a cycle of optimisation, labels of annotated herbarium images for training, validating and testing were changed when two or more labels were merged into one. These annotated images were then trimmed to the bounding box (BB) as stated in the protocol, then converted to a COCO file format.</p>
 <p>The conda environment 'labelme' was used for this process</p>
 
-<p><i> Updating labels. Where test_labels is a directory of the initial unchanged annotated images. <b>test_labels_updatedlabs</b> is the output directory. <b>testmap.csv</b> is a dictionary that indicates which old labels map to which new labels. <b>testmap.log</b> is a variable not in use, and is currently an empty placeholder.</i></p>
+<p><i> Updating labels. Where <b>test_labels</b> is a directory of the initial unchanged annotated images. <b>test_labels_updatedlabs</b> is the output directory. <b>testmap.csv</b> is a dictionary that indicates which old labels map to which new labels. <b>testmap.log</b> is a variable not in use, and is currently an empty placeholder.</i></p>
 
 ```
 python /home/botml/code/py/updating_labels.py /data/botml/test_labels/ /data/botml/test_labels_updatedlabs/ /data/botml/leaf_dimension/EIGHT_DuplSeven_BS20_ExtTrain/testmap.csv /data/botml/NINE_DuplSeven_BS20_L100_ExtTrain/fb2_vnoUM/testmap.log
@@ -39,7 +39,7 @@ python /home/botml/code/py/updating_labels.py /data/botml/test_labels/ /data/bot
 python /home/botml/code/py/cut_focal_box.py /data/botml/train_labels_updatedlabs/ /data/botml/train_labels_trimmed/ --focalbox BB --classes Leaf100
 ```
 
-<p>A portion of these train labels were then moved to validation (20% of all annotated input data). The input data for training, validating and testing were then converted to a COCO file format.</p>
+<p>A portion of these train labels were then moved to validation (a random 20% of all annotated input data). The input data for training, validating and testing were then converted to a COCO file format.</p>
 
 <p><i> Converting file formats to COCO. Where <b>/data</b> is the input directory. <b>--output</b> is the output file. <b>--classes</b> is the desired training label to be included. <b>--polyORbb</b> is whether the annotation is a polygon or a bounding box.</i><</p>
 
@@ -64,7 +64,7 @@ python /home/botml/code/py/lm2coco.py /data/botml/leaf_dimension/ELEVEN_DuplTen_
 
 <h2>Training, validating, and testing the model</h2>
 <p>The conda environment 'pytorch' was used for this process</p>
-<p>Edit the scripts according to your set up. This would include changing the training_path and the training parameters.</p>
+<p>Edit the following python scripts according to your set up. This would include changing the training_path and the desired training parameters for the iteration.</p>
 <i><p>Training & validating the model</i>. The following variables are included in the script below, and would likely need to be changed to be relevant.
 
 <p>
@@ -200,11 +200,12 @@ python predict_from_classifierv2.py
   <li>Copies the images to a temporary directory.</li>
   <li>Predicts the dimensions of the leaves in the images.</li>
   <li>Crops the leaves from the images.</li>
-  <li>Tracks duplicates.</li>
+  <li>Tracks duplicate leaves.</li>
   <li>Predicts the class of the leaves in the images.</li>
-  <li>Removes temporary files.</li>
+  <li>Removes invalid files.</li>
   <li>Executes R code to generate traits for the leaves.</li>
   <li>Deletes the temporary files.</li>
+  <li>Repeats loop until all leaves on images are extracted</li>
   <li>The script then merges the outcomes with the metadata and displays a message indicating that the script has finished executing.</li>
 </ol>
 </p>
