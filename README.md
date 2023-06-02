@@ -1,4 +1,8 @@
-Hello! This repository includes the key scripts and data files used for my honours thesis. File paths, file names, and such may need to be changed. Let me know if anything is missing or isn't working. 
+[![DOI](https://zenodo.org/badge/465993398.svg)](https://zenodo.org/badge/latestdoi/465993398)
+
+---
+
+This repository includes the key scripts and data files used for for a journal paper titled 'Using Machine Learning to Link Climate, Phylogeny and Leaf Area in Eucalypts Through a 50-fold Expansion of Current Leaf Trait Datasets', and has been archived by release on zenodo. File paths, file names, and such may need to be changed upon running on you rlocal device. Do let me know if anything is missing or isn't working. 
 
 /Code - includes code used for the methods i.e. (determining the model's accuracy in its predictions, the creation of the model), and the analysis of the subsequent dataset
 
