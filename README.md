@@ -194,7 +194,7 @@ python predict_from_classifierv2.py
 
 <h1>Using the final models on the entire dataset</h1>
 <p>The final model outputs were then moved to the directories /model/d2, /model/classifier, nesting in the main working directory of the final run.</p>
-<p>The final run was then executed using the bash script running_code.sh in a working directory, it calls tailored codes that can be found in this repository under /data/final_run. This script performs the following operations:
+<p>The final run was then executed using the bash script running_code.sh in a working directory, it calls tailored codes that can be found in this repository under /cpde/final_run. This script performs the following operations:
 
 <ol>
   <li>Copies the images to a temporary directory.</li>
